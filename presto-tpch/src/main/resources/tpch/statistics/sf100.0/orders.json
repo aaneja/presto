@@ -1,28 +1,28 @@
 {
-  "rowCount" : 1500000,
+  "rowCount" : 150000000,
   "columns" : {
     "o_orderkey" : {
-      "distinctValuesCount" : 1500254,
+      "distinctValuesCount" : 150095531,
       "min" : 1,
-      "max" : 6000000,
+      "max" : 600000000,
       "dataSize" : null
     },
     "o_custkey" : {
-      "distinctValuesCount" : 99996,
+      "distinctValuesCount" : 9999299,
       "min" : 1,
-      "max" : 149999,
+      "max" : 14999999,
       "dataSize" : null
     },
     "o_orderstatus" : {
       "distinctValuesCount" : 3,
       "min" : "F",
       "max" : "P",
-      "dataSize" : 1500000
+      "dataSize" : 150000000
     },
     "o_totalprice" : {
-      "distinctValuesCount" : 1464316,
-      "min" : 857.71,
-      "max" : 555285.16,
+      "distinctValuesCount" : 34698168,
+      "min" : 811.73,
+      "max" : 591036.15,
       "dataSize" : null
     },
     "o_orderdate" : {
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 12599829
+      "dataSize" : 1260024804
     },
     "o_clerk" : {
-      "distinctValuesCount" : 1000,
+      "distinctValuesCount" : 100000,
       "min" : "Clerk#000000001",
-      "max" : "Clerk#000001000",
-      "dataSize" : 22500000
+      "max" : "Clerk#000100000",
+      "dataSize" : 2250000000
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -50,10 +50,10 @@
       "dataSize" : null
     },
     "o_comment" : {
-      "distinctValuesCount" : 1481837,
-      "min" : " Tiresias about the blithely ironic a",
-      "max" : "zzle? furiously ironic instructions among the unusual t",
-      "dataSize" : 72770808
+      "distinctValuesCount" : 111649911,
+      "min" : " Tiresias about the",
+      "max" : "zzle? unusual requests w",
+      "dataSize" : 7275038709
     }
   }
 }

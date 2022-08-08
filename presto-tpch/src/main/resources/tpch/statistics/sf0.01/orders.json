@@ -17,7 +17,7 @@
       "distinctValuesCount" : 3,
       "min" : "F",
       "max" : "P",
-      "dataSize" : 3
+      "dataSize" : 15000
     },
     "o_totalprice" : {
       "distinctValuesCount" : 14996,
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 42
+      "dataSize" : 126188
     },
     "o_clerk" : {
       "distinctValuesCount" : 1000,
       "min" : "Clerk#000000001",
       "max" : "Clerk#000001000",
-      "dataSize" : 15000
+      "dataSize" : 225000
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -53,7 +53,7 @@
       "distinctValuesCount" : 14995,
       "min" : " about the accounts. slyly express accounts wa",
       "max" : "zzle. carefully enticing deposits nag furio",
-      "dataSize" : 727249
+      "dataSize" : 727364
     }
   }
 }

@@ -2,7 +2,7 @@
   "rowCount" : 732044,
   "columns" : {
     "o_orderkey" : {
-      "distinctValuesCount" : 732044,
+      "distinctValuesCount" : 732160,
       "min" : 1,
       "max" : 6000000,
       "dataSize" : null
@@ -17,10 +17,10 @@
       "distinctValuesCount" : 1,
       "min" : "O",
       "max" : "O",
-      "dataSize" : 1
+      "dataSize" : 732044
     },
     "o_totalprice" : {
-      "distinctValuesCount" : 723368,
+      "distinctValuesCount" : 723271,
       "min" : 857.71,
       "max" : 530604.44,
       "dataSize" : null
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 42
+      "dataSize" : 6148026
     },
     "o_clerk" : {
       "distinctValuesCount" : 1000,
       "min" : "Clerk#000000001",
       "max" : "Clerk#000001000",
-      "dataSize" : 15000
+      "dataSize" : 10980660
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -50,10 +50,10 @@
       "dataSize" : null
     },
     "o_comment" : {
-      "distinctValuesCount" : 727175,
+      "distinctValuesCount" : 727339,
       "min" : " Tiresias about the blithely ironic a",
       "max" : "zzle? furiously ironic instructions among the unusual t",
-      "dataSize" : 35362715
+      "dataSize" : 35489709
     }
   }
 }

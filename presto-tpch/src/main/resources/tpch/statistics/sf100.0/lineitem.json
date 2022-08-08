@@ -1,22 +1,22 @@
 {
-  "rowCount" : 60175,
+  "rowCount" : 600037902,
   "columns" : {
     "l_orderkey" : {
-      "distinctValuesCount" : 15000,
+      "distinctValuesCount" : 150095531,
       "min" : 1,
-      "max" : 60000,
+      "max" : 600000000,
       "dataSize" : null
     },
     "l_partkey" : {
-      "distinctValuesCount" : 2000,
+      "distinctValuesCount" : 20000911,
       "min" : 1,
-      "max" : 2000,
+      "max" : 20000000,
       "dataSize" : null
     },
     "l_suppkey" : {
-      "distinctValuesCount" : 100,
+      "distinctValuesCount" : 1000029,
       "min" : 1,
-      "max" : 100,
+      "max" : 1000000,
       "dataSize" : null
     },
     "l_linenumber" : {
@@ -32,9 +32,9 @@
       "dataSize" : null
     },
     "l_extendedprice" : {
-      "distinctValuesCount" : 35921,
-      "min" : 904.0,
-      "max" : 94949.5,
+      "distinctValuesCount" : 3786171,
+      "min" : 900.05,
+      "max" : 104948.5,
       "dataSize" : null
     },
     "l_discount" : {
@@ -53,49 +53,49 @@
       "distinctValuesCount" : 3,
       "min" : "A",
       "max" : "R",
-      "dataSize" : 60175
+      "dataSize" : 600037902
     },
     "l_linestatus" : {
       "distinctValuesCount" : 2,
       "min" : "F",
       "max" : "O",
-      "dataSize" : 60175
+      "dataSize" : 600037902
     },
     "l_shipdate" : {
-      "distinctValuesCount" : 2518,
-      "min" : 8038,
-      "max" : 10559,
+      "distinctValuesCount" : 2526,
+      "min" : 8036,
+      "max" : 10561,
       "dataSize" : null
     },
     "l_commitdate" : {
-      "distinctValuesCount" : 2460,
-      "min" : 8067,
-      "max" : 10527,
+      "distinctValuesCount" : 2466,
+      "min" : 8065,
+      "max" : 10530,
       "dataSize" : null
     },
     "l_receiptdate" : {
-      "distinctValuesCount" : 2529,
-      "min" : 8043,
-      "max" : 10585,
+      "distinctValuesCount" : 2555,
+      "min" : 8037,
+      "max" : 10591,
       "dataSize" : null
     },
     "l_shipinstruct" : {
       "distinctValuesCount" : 4,
       "min" : "COLLECT COD",
       "max" : "TAKE BACK RETURN",
-      "dataSize" : 722163
+      "dataSize" : 7200336912
     },
     "l_shipmode" : {
       "distinctValuesCount" : 7,
       "min" : "AIR",
       "max" : "TRUCK",
-      "dataSize" : 258126
+      "dataSize" : 2571562204
     },
     "l_comment" : {
-      "distinctValuesCount" : 58616,
+      "distinctValuesCount" : 142684829,
       "min" : " Tiresias ",
-      "max" : "zzle: pending i",
-      "dataSize" : 1598371
+      "max" : "zzle? unusual",
+      "dataSize" : 15900892603
     }
   }
 }

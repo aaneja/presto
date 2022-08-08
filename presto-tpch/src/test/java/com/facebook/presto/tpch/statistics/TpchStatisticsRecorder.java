@@ -38,7 +38,7 @@ import static java.lang.String.format;
  */
 public class TpchStatisticsRecorder
 {
-    private static final ImmutableList<String> SUPPORTED_SCHEMAS = ImmutableList.of("sf0.01", "sf1.0");
+    private static final ImmutableList<String> SUPPORTED_SCHEMAS = ImmutableList.of("sf100.0");
 
     public static void main(String[] args)
     {

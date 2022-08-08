@@ -1,35 +1,35 @@
 {
-  "rowCount" : 200000,
+  "rowCount" : 20000000,
   "columns" : {
     "p_partkey" : {
-      "distinctValuesCount" : 200044,
+      "distinctValuesCount" : 20000911,
       "min" : 1,
-      "max" : 200000,
+      "max" : 20000000,
       "dataSize" : null
     },
     "p_name" : {
-      "distinctValuesCount" : 199993,
-      "min" : "almond antique blue royal burnished",
-      "max" : "yellow white seashell lavender black",
-      "dataSize" : 6550221
+      "distinctValuesCount" : 19984907,
+      "min" : "almond antique aquamarine beige burlywood",
+      "max" : "yellow white wheat violet orchid",
+      "dataSize" : 654983885
     },
     "p_mfgr" : {
       "distinctValuesCount" : 5,
       "min" : "Manufacturer#1",
       "max" : "Manufacturer#5",
-      "dataSize" : 2800000
+      "dataSize" : 280000000
     },
     "p_brand" : {
       "distinctValuesCount" : 25,
       "min" : "Brand#11",
       "max" : "Brand#55",
-      "dataSize" : 1600000
+      "dataSize" : 160000000
     },
     "p_type" : {
       "distinctValuesCount" : 150,
       "min" : "ECONOMY ANODIZED BRASS",
       "max" : "STANDARD POLISHED TIN",
-      "dataSize" : 4119946
+      "dataSize" : 411999154
     },
     "p_size" : {
       "distinctValuesCount" : 50,
@@ -41,19 +41,19 @@
       "distinctValuesCount" : 40,
       "min" : "JUMBO BAG",
       "max" : "WRAP PKG",
-      "dataSize" : 1514971
+      "dataSize" : 151492985
     },
     "p_retailprice" : {
-      "distinctValuesCount" : 20899,
-      "min" : 901.0,
+      "distinctValuesCount" : 119899,
+      "min" : 900.01,
       "max" : 2098.99,
       "dataSize" : null
     },
     "p_comment" : {
-      "distinctValuesCount" : 131745,
+      "distinctValuesCount" : 3945080,
       "min" : " Tire",
-      "max" : "zzle. quickly si",
-      "dataSize" : 2702438
+      "max" : "zzle? speci",
+      "dataSize" : 269975443
     }
   }
 }

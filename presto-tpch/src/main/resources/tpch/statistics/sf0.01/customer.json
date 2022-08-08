@@ -41,7 +41,7 @@
       "distinctValuesCount" : 5,
       "min" : "AUTOMOBILE",
       "max" : "MACHINERY",
-      "dataSize" : 45
+      "dataSize" : 13465
     },
     "c_comment" : {
       "distinctValuesCount" : 1500,

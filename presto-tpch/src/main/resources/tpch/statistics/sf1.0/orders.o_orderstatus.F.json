@@ -2,7 +2,7 @@
   "rowCount" : 729413,
   "columns" : {
     "o_orderkey" : {
-      "distinctValuesCount" : 729413,
+      "distinctValuesCount" : 729466,
       "min" : 3,
       "max" : 5999975,
       "dataSize" : null
@@ -17,10 +17,10 @@
       "distinctValuesCount" : 1,
       "min" : "F",
       "max" : "F",
-      "dataSize" : 1
+      "dataSize" : 729413
     },
     "o_totalprice" : {
-      "distinctValuesCount" : 720822,
+      "distinctValuesCount" : 720946,
       "min" : 866.9,
       "max" : 555285.16,
       "dataSize" : null
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 42
+      "dataSize" : 6128230
     },
     "o_clerk" : {
       "distinctValuesCount" : 1000,
       "min" : "Clerk#000000001",
       "max" : "Clerk#000001000",
-      "dataSize" : 15000
+      "dataSize" : 10941195
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -50,10 +50,10 @@
       "dataSize" : null
     },
     "o_comment" : {
-      "distinctValuesCount" : 724600,
+      "distinctValuesCount" : 724378,
       "min" : " Tiresias above the carefully ironic packages nag about the pend",
       "max" : "zzle; ironic accounts affix slyly regular pinto b",
-      "dataSize" : 35285413
+      "dataSize" : 35410136
     }
   }
 }

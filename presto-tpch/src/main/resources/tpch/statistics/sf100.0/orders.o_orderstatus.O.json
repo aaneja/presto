@@ -1,33 +1,33 @@
 {
-  "rowCount" : 7333,
+  "rowCount" : 73086053,
   "columns" : {
     "o_orderkey" : {
-      "distinctValuesCount" : 7333,
+      "distinctValuesCount" : 73109729,
       "min" : 1,
-      "max" : 59974,
+      "max" : 600000000,
       "dataSize" : null
     },
     "o_custkey" : {
-      "distinctValuesCount" : 998,
+      "distinctValuesCount" : 9966948,
       "min" : 1,
-      "max" : 1499,
+      "max" : 14999999,
       "dataSize" : null
     },
     "o_orderstatus" : {
       "distinctValuesCount" : 1,
       "min" : "O",
       "max" : "O",
-      "dataSize" : 7333
+      "dataSize" : 73086053
     },
     "o_totalprice" : {
-      "distinctValuesCount" : 7331,
-      "min" : 974.04,
-      "max" : 466001.28,
+      "distinctValuesCount" : 29576643,
+      "min" : 821.18,
+      "max" : 591036.15,
       "dataSize" : null
     },
     "o_orderdate" : {
-      "distinctValuesCount" : 1213,
-      "min" : 9197,
+      "distinctValuesCount" : 1263,
+      "min" : 9178,
       "max" : 10440,
       "dataSize" : null
     },
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 61718
+      "dataSize" : 613952677
     },
     "o_clerk" : {
-      "distinctValuesCount" : 1000,
+      "distinctValuesCount" : 100000,
       "min" : "Clerk#000000001",
-      "max" : "Clerk#000001000",
-      "dataSize" : 109995
+      "max" : "Clerk#000100000",
+      "dataSize" : 1096290795
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -50,10 +50,10 @@
       "dataSize" : null
     },
     "o_comment" : {
-      "distinctValuesCount" : 7333,
-      "min" : " about the accounts. slyly express accounts wa",
-      "max" : "zzle. carefully enticing deposits nag furio",
-      "dataSize" : 354754
+      "distinctValuesCount" : 61128827,
+      "min" : " Tiresias about the",
+      "max" : "zzle? theodolites against the",
+      "dataSize" : 3544821901
     }
   }
 }

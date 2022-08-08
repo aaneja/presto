@@ -1,47 +1,47 @@
 {
-  "rowCount" : 7304,
+  "rowCount" : 73072502,
   "columns" : {
     "o_orderkey" : {
-      "distinctValuesCount" : 7304,
+      "distinctValuesCount" : 73073468,
       "min" : 3,
-      "max" : 59975,
+      "max" : 599999975,
       "dataSize" : null
     },
     "o_custkey" : {
-      "distinctValuesCount" : 996,
+      "distinctValuesCount" : 9966972,
       "min" : 1,
-      "max" : 1499,
+      "max" : 14999999,
       "dataSize" : null
     },
     "o_orderstatus" : {
       "distinctValuesCount" : 1,
       "min" : "F",
       "max" : "F",
-      "dataSize" : 7304
+      "dataSize" : 73072502
     },
     "o_totalprice" : {
-      "distinctValuesCount" : 7303,
-      "min" : 874.89,
-      "max" : 408345.74,
+      "distinctValuesCount" : 29571590,
+      "min" : 811.73,
+      "max" : 586945.44,
       "dataSize" : null
     },
     "o_orderdate" : {
-      "distinctValuesCount" : 1213,
+      "distinctValuesCount" : 1263,
       "min" : 8035,
-      "max" : 9277,
+      "max" : 9297,
       "dataSize" : null
     },
     "o_orderpriority" : {
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 61392
+      "dataSize" : 613807912
     },
     "o_clerk" : {
-      "distinctValuesCount" : 1000,
+      "distinctValuesCount" : 100000,
       "min" : "Clerk#000000001",
-      "max" : "Clerk#000001000",
-      "dataSize" : 109560
+      "max" : "Clerk#000100000",
+      "dataSize" : 1096087530
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
@@ -50,10 +50,10 @@
       "dataSize" : null
     },
     "o_comment" : {
-      "distinctValuesCount" : 7303,
-      "min" : " about the blithely ironic requests. fluffily ironic ",
-      "max" : "zzle final, final dependencies. final, final accounts are blith",
-      "dataSize" : 354885
+      "distinctValuesCount" : 61085748,
+      "min" : " Tiresias about the ",
+      "max" : "zzle? unusual requests w",
+      "dataSize" : 3543938811
     }
   }
 }

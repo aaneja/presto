@@ -17,19 +17,19 @@
       "distinctValuesCount" : 5,
       "min" : "Manufacturer#1",
       "max" : "Manufacturer#5",
-      "dataSize" : 70
+      "dataSize" : 28000
     },
     "p_brand" : {
       "distinctValuesCount" : 25,
       "min" : "Brand#11",
       "max" : "Brand#55",
-      "dataSize" : 200
+      "dataSize" : 16000
     },
     "p_type" : {
       "distinctValuesCount" : 150,
       "min" : "ECONOMY ANODIZED BRASS",
       "max" : "STANDARD POLISHED TIN",
-      "dataSize" : 3090
+      "dataSize" : 41102
     },
     "p_size" : {
       "distinctValuesCount" : 50,
@@ -41,7 +41,7 @@
       "distinctValuesCount" : 40,
       "min" : "JUMBO BAG",
       "max" : "WRAP PKG",
-      "dataSize" : 303
+      "dataSize" : 15221
     },
     "p_retailprice" : {
       "distinctValuesCount" : 1099,
@@ -53,7 +53,7 @@
       "distinctValuesCount" : 1959,
       "min" : " about the furio",
       "max" : "zzle among t",
-      "dataSize" : 26839
+      "dataSize" : 27173
     }
   }
 }

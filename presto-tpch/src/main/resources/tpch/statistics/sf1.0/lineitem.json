@@ -2,13 +2,13 @@
   "rowCount" : 6001215,
   "columns" : {
     "l_orderkey" : {
-      "distinctValuesCount" : 1500000,
+      "distinctValuesCount" : 1500254,
       "min" : 1,
       "max" : 6000000,
       "dataSize" : null
     },
     "l_partkey" : {
-      "distinctValuesCount" : 200000,
+      "distinctValuesCount" : 200044,
       "min" : 1,
       "max" : 200000,
       "dataSize" : null
@@ -32,7 +32,7 @@
       "dataSize" : null
     },
     "l_extendedprice" : {
-      "distinctValuesCount" : 933900,
+      "distinctValuesCount" : 933985,
       "min" : 901.0,
       "max" : 104949.5,
       "dataSize" : null
@@ -53,13 +53,13 @@
       "distinctValuesCount" : 3,
       "min" : "A",
       "max" : "R",
-      "dataSize" : 3
+      "dataSize" : 6001215
     },
     "l_linestatus" : {
       "distinctValuesCount" : 2,
       "min" : "F",
       "max" : "O",
-      "dataSize" : 2
+      "dataSize" : 6001215
     },
     "l_shipdate" : {
       "distinctValuesCount" : 2526,
@@ -83,19 +83,19 @@
       "distinctValuesCount" : 4,
       "min" : "COLLECT COD",
       "max" : "TAKE BACK RETURN",
-      "dataSize" : 48
+      "dataSize" : 72006409
     },
     "l_shipmode" : {
       "distinctValuesCount" : 7,
       "min" : "AIR",
       "max" : "TRUCK",
-      "dataSize" : 30
+      "dataSize" : 25717034
     },
     "l_comment" : {
-      "distinctValuesCount" : 4580667,
+      "distinctValuesCount" : 4580252,
       "min" : " Tiresias ",
       "max" : "zzle? slyly final platelets sleep quickly. ",
-      "dataSize" : 135857609
+      "dataSize" : 158997209
     }
   }
 }

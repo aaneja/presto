@@ -2,7 +2,7 @@
   "rowCount" : 800000,
   "columns" : {
     "ps_partkey" : {
-      "distinctValuesCount" : 200000,
+      "distinctValuesCount" : 200044,
       "min" : 1,
       "max" : 200000,
       "dataSize" : null
@@ -26,10 +26,10 @@
       "dataSize" : null
     },
     "ps_comment" : {
-      "distinctValuesCount" : 799124,
+      "distinctValuesCount" : 799137,
       "min" : " Tiresias according to the quiet courts sleep against the ironic, final requests. carefully unusual requests affix fluffily quickly ironic packages. regular ",
       "max" : "zzle. unusual decoys detect slyly blithely express frays. furiously ironic packages about the bold accounts are close requests. slowly silent reque",
-      "dataSize" : 98784266
+      "dataSize" : 98891983
     }
   }
 }

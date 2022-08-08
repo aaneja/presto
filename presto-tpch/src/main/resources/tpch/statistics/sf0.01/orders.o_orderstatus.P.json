@@ -17,7 +17,7 @@
       "distinctValuesCount" : 1,
       "min" : "P",
       "max" : "P",
-      "dataSize" : 1
+      "dataSize" : 363
     },
     "o_totalprice" : {
       "distinctValuesCount" : 363,
@@ -35,13 +35,13 @@
       "distinctValuesCount" : 5,
       "min" : "1-URGENT",
       "max" : "5-LOW",
-      "dataSize" : 42
+      "dataSize" : 3078
     },
     "o_clerk" : {
       "distinctValuesCount" : 310,
       "min" : "Clerk#000000001",
       "max" : "Clerk#000001000",
-      "dataSize" : 4650
+      "dataSize" : 5445
     },
     "o_shippriority" : {
       "distinctValuesCount" : 1,
