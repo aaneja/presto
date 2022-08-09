@@ -13,14 +13,19 @@
  */
 package com.facebook.presto.sql.planner.iterative;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.cost.PlanCostEstimate;
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
+import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.plan.LogicalProperties;
 import com.facebook.presto.spi.plan.LogicalPropertiesProvider;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.spi.plan.TableScanNode;
+import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Multiset;
+import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 
@@ -29,6 +34,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -65,6 +72,9 @@ import static java.util.Objects.requireNonNull;
  */
 public class Memo
 {
+    // the pattern to search for
+    public static final Pattern TABLE_NAME_MATCHER = Pattern.compile("tableName=(.*),");
+    private static final Logger LOG = Logger.get(Memo.class);
     private static final int ROOT_GROUP_REF = 0;
 
     private final PlanNodeIdAllocator idAllocator;
@@ -74,6 +84,8 @@ public class Memo
     private final Optional<LogicalPropertiesProvider> logicalPropertiesProvider;
 
     private int nextGroupId = ROOT_GROUP_REF + 1;
+
+    private String prevJoinOrder = "";
 
     public Memo(PlanNodeIdAllocator idAllocator, PlanNode plan)
     {
@@ -86,6 +98,7 @@ public class Memo
         this.logicalPropertiesProvider = logicalPropertiesProvider;
         rootGroup = insertRecursive(plan);
         groups.get(rootGroup).incomingReferences.add(ROOT_GROUP_REF);
+        prevJoinOrder = computeJoinOrderFromRoot();
     }
 
     public int getRootGroup()
@@ -154,6 +167,8 @@ public class Memo
         }
         decrementReferenceCounts(old, group);
         evictStatisticsAndCost(group);
+
+        logFullPlan(reason);
 
         return node;
     }
@@ -270,6 +285,93 @@ public class Memo
     public int getGroupCount()
     {
         return groups.size();
+    }
+
+    private void logFullPlan(String reason)
+    {
+        final String newJoinOrder = computeJoinOrderFromRoot();
+        if (!newJoinOrder.equals(prevJoinOrder)) {
+            LOG.info("[%s] caused Join Order change : %s", reason, newJoinOrder);
+            prevJoinOrder = newJoinOrder;
+        }
+//        else {
+//            LOG.debug("[%s] resulted in NO CHANGE TO JOIN ORDER", reason);
+//        }
+    }
+
+    @NotNull
+    private String computeJoinOrderFromRoot()
+    {
+        final PlanNode rootNode = getNode(getRootGroup());
+
+        StringBuilder joinOrder = new StringBuilder();
+        traversePostOrder(rootNode, joinOrder);
+        return joinOrder.toString();
+    }
+
+    private String getTableName(TableHandle table)
+    {
+        if (table.getConnectorHandle().getClass().getSimpleName().equals("TpchTableHandle")) {
+            return table.getConnectorHandle().toString().split(":")[0];
+        }
+        else {
+            Matcher m = TABLE_NAME_MATCHER.matcher(table.getConnectorHandle().toString());
+            if (m.find()) {
+                return m.group(1);
+            }
+        }
+
+        return table.getConnectorHandle().toString();
+    }
+
+    private void traversePostOrder(PlanNode node, StringBuilder joinOrder)
+    {
+        GroupReference groupRef = null;
+        if (node instanceof GroupReference) {
+            //Get PlanNode if GroupNode
+            groupRef = (GroupReference) node;
+            node = getNode(groupRef.getGroupId());
+        }
+
+        for (PlanNode source : node.getSources()) {
+            //Traverse children first, i.e. do a post order traversal, giving us a postfix tree of nodes
+            //Will go left then right for Join Nodes
+            traversePostOrder(source, joinOrder);
+        }
+
+        //Next print the current node
+        if (node instanceof JoinNode) {
+            JoinNode jNode = (JoinNode) node;
+            String distributionType = jNode.getDistributionType().isPresent() ? jNode.getDistributionType().get().toString() : "NotAssigned";
+            joinOrder.append(String.format("Join[%s, %s, %s], ", jNode.getType(), distributionType, getStatsAndCost(groupRef)));
+        }
+        else if (node instanceof TableScanNode) {
+            TableScanNode tNode = (TableScanNode) node;
+
+            joinOrder.append(getTableName(tNode.getTable()))
+                    .append(", ");
+        }
+        else if (node.getSources().size() > 1) {
+            joinOrder.append(String.format("Operator[%s] Operands[%d], ", node, node.getSources().size()));
+        }
+    }
+
+    /*
+   Gets String representation of GroupReference, if present
+    */
+    private String getStatsAndCost(GroupReference groupRef)
+    {
+        if (groupRef == null) {
+            return "NoStatsAndCost";
+        }
+        Optional<PlanNodeStatsEstimate> stats = getStats(groupRef.getGroupId());
+        Optional<PlanCostEstimate> cost = getCost(groupRef.getGroupId());
+
+        StringBuilder out = new StringBuilder();
+        stats.ifPresent(out::append);
+        cost.ifPresent(out::append);
+
+        return "" .equals(out.toString()) ? "NoStatsAndCost" : out.toString();
     }
 
     private static final class Group

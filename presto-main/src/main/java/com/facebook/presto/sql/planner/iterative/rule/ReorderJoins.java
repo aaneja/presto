@@ -133,6 +133,7 @@ public class ReorderJoins
     @Override
     public Result apply(JoinNode joinNode, Captures captures, Context context)
     {
+        log.debug("Entered ReorderJoins");
         MultiJoinNode multiJoinNode = toMultiJoinNode(joinNode, context.getLookup(), getMaxReorderedJoins(context.getSession()), functionResolution, determinismEvaluator);
         JoinEnumerator joinEnumerator = new JoinEnumerator(
                 costComparator,
@@ -142,6 +143,9 @@ public class ReorderJoins
                 functionResolution,
                 metadata);
         JoinEnumerationResult result = joinEnumerator.chooseJoinOrder(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
+        if(result.equals(UNKNOWN_COST_RESULT)){
+            log.debug("Could not ReorderJoins because partitioning produced one or more plans with UNKNOWN_COST_RESULT");
+        }
         if (!result.getPlanNode().isPresent()) {
             return Result.empty();
         }

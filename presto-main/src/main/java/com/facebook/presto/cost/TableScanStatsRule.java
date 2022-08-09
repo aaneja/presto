@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.cost;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.Metadata;
@@ -36,6 +37,8 @@ import static java.util.Objects.requireNonNull;
 public class TableScanStatsRule
         extends SimpleStatsRule<TableScanNode>
 {
+    private static final Logger LOG = Logger.get(TableScanStatsRule.class);
+
     private static final Pattern<TableScanNode> PATTERN = tableScan();
 
     private final Metadata metadata;
@@ -66,11 +69,14 @@ public class TableScanStatsRule
             outputVariableStats.put(entry.getKey(), columnStatistics.map(statistics -> StatsUtil.toVariableStatsEstimate(tableStatistics, statistics)).orElse(VariableStatsEstimate.unknown()));
         }
 
-        return Optional.of(PlanNodeStatsEstimate.builder()
+        final PlanNodeStatsEstimate estimates = PlanNodeStatsEstimate.builder()
                 .setOutputRowCount(tableStatistics.getRowCount().getValue())
                 .setTotalSize(tableStatistics.getTotalSize().getValue())
                 .setConfident(true)
                 .addVariableStatistics(outputVariableStats)
-                .build());
+                .build();
+        LOG.debug("[%s] Table stats at planner layer are are : [%s]", node.getTable().toString(), estimates);
+
+        return Optional.of(estimates);
     }
 }
