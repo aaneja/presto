@@ -107,7 +107,7 @@ public class TestJoinEnumerator
         MultiJoinNode multiJoinNode = new MultiJoinNode(
                 new LinkedHashSet<>(ImmutableList.of(p.values(a1), p.values(b1))),
                 TRUE_CONSTANT,
-                ImmutableList.of(a1, b1));
+                ImmutableList.of(a1, b1), false);
         JoinEnumerator joinEnumerator = new JoinEnumerator(
                 new CostComparator(1, 1, 1),
                 multiJoinNode.getFilter(),

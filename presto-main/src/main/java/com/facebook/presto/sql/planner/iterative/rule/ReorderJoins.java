@@ -26,6 +26,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.DeterminismEvaluator;
 import com.facebook.presto.spi.relation.RowExpression;
@@ -33,6 +34,7 @@ import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.PlanVariableAllocator;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.VariablesExtractor;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
@@ -71,6 +73,7 @@ import static com.facebook.presto.expressions.LogicalRowExpressions.extractConju
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.AUTOMATIC;
 import static com.facebook.presto.sql.planner.EqualityInference.createEqualityInference;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isBelowMaxBroadcastSize;
+import static com.facebook.presto.sql.planner.iterative.rule.PushProjectionThroughJoin.pushProjectionThroughJoin;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.INFINITE_COST_RESULT;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.UNKNOWN_COST_RESULT;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.MultiJoinNode.toMultiJoinNode;
@@ -134,15 +137,25 @@ public class ReorderJoins
     public Result apply(JoinNode joinNode, Captures captures, Context context)
     {
         log.debug("Entered ReorderJoins");
-        MultiJoinNode multiJoinNode = toMultiJoinNode(joinNode, context.getLookup(), getMaxReorderedJoins(context.getSession()), functionResolution, determinismEvaluator);
-        JoinEnumerator joinEnumerator = new JoinEnumerator(
-                costComparator,
-                multiJoinNode.getFilter(),
-                context,
-                determinismEvaluator,
-                functionResolution,
-                metadata);
-        JoinEnumerationResult result = joinEnumerator.chooseJoinOrder(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
+
+        // try reorder joins with projection pushdown first
+        MultiJoinNode multiJoinNode = toMultiJoinNode(joinNode, context.getLookup(), getMaxReorderedJoins(context.getSession()), functionResolution, determinismEvaluator,
+                true, context.getIdAllocator(), context.getVariableAllocator().getTypes());
+        JoinEnumerationResult resultWithProjectionPushdown = chooseJoinOrder(multiJoinNode, context);
+        if (!resultWithProjectionPushdown.getPlanNode().isPresent()) {
+            return Result.empty();
+        }
+
+        if (!multiJoinNode.isPushedProjectionThroughJoin()) {
+            log.debug("Project pushed thru Join, new Join order");
+            return Result.ofPlanNode(resultWithProjectionPushdown.getPlanNode().get());
+        }
+
+        // try reorder joins without projection pushdown
+        multiJoinNode = toMultiJoinNode(joinNode, context.getLookup(), getMaxReorderedJoins(context.getSession()), functionResolution, determinismEvaluator, false,
+                context.getIdAllocator(), context.getVariableAllocator().getTypes());
+
+        JoinEnumerationResult result = chooseJoinOrder(multiJoinNode, context);
         if(result.equals(UNKNOWN_COST_RESULT)){
             log.debug("Could not ReorderJoins because partitioning produced one or more plans with UNKNOWN_COST_RESULT");
         }
@@ -150,6 +163,18 @@ public class ReorderJoins
             return Result.empty();
         }
         return Result.ofPlanNode(result.getPlanNode().get());
+    }
+
+    private JoinEnumerationResult chooseJoinOrder(MultiJoinNode multiJoinNode, Context context)
+    {
+        JoinEnumerator joinEnumerator = new JoinEnumerator(
+                costComparator,
+                multiJoinNode.getFilter(),
+                context,
+                determinismEvaluator,
+                functionResolution,
+                metadata);
+        return joinEnumerator.chooseJoinOrder(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
     }
 
     @VisibleForTesting
@@ -463,17 +488,24 @@ public class ReorderJoins
         private final LinkedHashSet<PlanNode> sources;
         private final RowExpression filter;
         private final List<VariableReferenceExpression> outputVariables;
+        private final boolean pushedProjectionThroughJoin;
 
-        public MultiJoinNode(LinkedHashSet<PlanNode> sources, RowExpression filter, List<VariableReferenceExpression> outputVariables)
+        public MultiJoinNode(LinkedHashSet<PlanNode> sources, RowExpression filter, List<VariableReferenceExpression> outputVariables, boolean pushedProjectionThroughJoin)
         {
             checkArgument(sources.size() > 1, "sources size is <= 1");
 
             this.sources = requireNonNull(sources, "sources is null");
             this.filter = requireNonNull(filter, "filter is null");
             this.outputVariables = ImmutableList.copyOf(requireNonNull(outputVariables, "outputVariables is null"));
+            this.pushedProjectionThroughJoin = pushedProjectionThroughJoin;
 
             List<VariableReferenceExpression> inputVariables = sources.stream().flatMap(source -> source.getOutputVariables().stream()).collect(toImmutableList());
             checkArgument(inputVariables.containsAll(outputVariables), "inputs do not contain all output variables");
+        }
+
+        public boolean isPushedProjectionThroughJoin()
+        {
+            return pushedProjectionThroughJoin;
         }
 
         public RowExpression getFilter()
@@ -512,13 +544,16 @@ public class ReorderJoins
             MultiJoinNode other = (MultiJoinNode) obj;
             return this.sources.equals(other.sources)
                     && ImmutableSet.copyOf(extractConjuncts(this.filter)).equals(ImmutableSet.copyOf(extractConjuncts(other.filter)))
-                    && this.outputVariables.equals(other.outputVariables);
+                    && this.outputVariables.equals(other.outputVariables)
+                    && this.pushedProjectionThroughJoin == other.pushedProjectionThroughJoin;
         }
 
-        static MultiJoinNode toMultiJoinNode(JoinNode joinNode, Lookup lookup, int joinLimit, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator)
+        static MultiJoinNode toMultiJoinNode(JoinNode joinNode, Lookup lookup, int joinLimit, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator,
+                boolean pushProjectionsThroughJoin,
+                PlanNodeIdAllocator planNodeIdAllocator, TypeProvider types)
         {
             // the number of sources is the number of joins + 1
-            return new JoinNodeFlattener(joinNode, lookup, joinLimit + 1, functionResolution, determinismEvaluator).toMultiJoinNode();
+            return new JoinNodeFlattener(joinNode, lookup, joinLimit + 1, functionResolution, determinismEvaluator, pushProjectionsThroughJoin, planNodeIdAllocator, types).toMultiJoinNode();
         }
 
         private static class JoinNodeFlattener
@@ -529,8 +564,13 @@ public class ReorderJoins
             private final FunctionResolution functionResolution;
             private final DeterminismEvaluator determinismEvaluator;
             private final Lookup lookup;
+            private final boolean pushProjectionsThroughJoin;
+            private final PlanNodeIdAllocator planNodeIdAllocator;
+            private final TypeProvider types;
+            private boolean pushedProjectionThroughJoin;
 
-            JoinNodeFlattener(JoinNode node, Lookup lookup, int sourceLimit, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator)
+            JoinNodeFlattener(JoinNode node, Lookup lookup, int sourceLimit, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator,
+                    boolean pushProjectionsThroughJoin, PlanNodeIdAllocator planNodeIdAllocator, TypeProvider types)
             {
                 requireNonNull(node, "node is null");
                 checkState(node.getType() == INNER, "join type must be INNER");
@@ -538,12 +578,32 @@ public class ReorderJoins
                 this.lookup = requireNonNull(lookup, "lookup is null");
                 this.functionResolution = requireNonNull(functionResolution, "functionResolution is null");
                 this.determinismEvaluator = requireNonNull(determinismEvaluator, "determinismEvaluator is null");
+                this.pushProjectionsThroughJoin = pushProjectionsThroughJoin;
+                this.planNodeIdAllocator = planNodeIdAllocator;
+                this.types = types;
                 flattenNode(node, sourceLimit);
             }
 
             private void flattenNode(PlanNode node, int limit)
             {
                 PlanNode resolved = lookup.resolve(node);
+
+                if (resolved instanceof ProjectNode) {
+                    if (!pushProjectionsThroughJoin) {
+                        sources.add(node);
+                        return;
+                    }
+
+                    Optional<PlanNode> rewrittenNode = pushProjectionThroughJoin((ProjectNode) resolved, lookup, planNodeIdAllocator, determinismEvaluator, functionResolution, types);
+                    if (!rewrittenNode.isPresent()) {
+                        sources.add(node);
+                        return;
+                    }
+
+                    pushedProjectionThroughJoin = true;
+                    flattenNode(rewrittenNode.get(), limit);
+                    return;
+                }
 
                 // (limit - 2) because you need to account for adding left and right side
                 if (!(resolved instanceof JoinNode) || (sources.size() > (limit - 2))) {
@@ -568,7 +628,7 @@ public class ReorderJoins
 
             MultiJoinNode toMultiJoinNode()
             {
-                return new MultiJoinNode(sources, and(filters), outputVariables);
+                return new MultiJoinNode(sources, and(filters), outputVariables, pushedProjectionThroughJoin);
             }
         }
 
@@ -598,7 +658,7 @@ public class ReorderJoins
 
             public MultiJoinNode build()
             {
-                return new MultiJoinNode(new LinkedHashSet<>(sources), filter, outputVariables);
+                return new MultiJoinNode(new LinkedHashSet<>(sources), filter, outputVariables, false);
             }
         }
     }

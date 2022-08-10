@@ -21,6 +21,7 @@ import com.facebook.presto.spi.plan.LogicalProperties;
 import com.facebook.presto.spi.plan.LogicalPropertiesProvider;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.google.common.collect.HashMultiset;
@@ -351,6 +352,10 @@ public class Memo
             joinOrder.append(getTableName(tNode.getTable()))
                     .append(", ");
         }
+//        else if (node instanceof ProjectNode) {
+//            joinOrder.append(String.format("PROJECT[%s]", node.getOutputVariables()))
+//                    .append(", ");
+//        }
         else if (node.getSources().size() > 1) {
             joinOrder.append(String.format("Operator[%s] Operands[%d], ", node, node.getSources().size()));
         }

@@ -38,9 +38,11 @@ import com.facebook.presto.sql.tree.TryExpression;
 import com.facebook.presto.sql.util.AstUtils;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -94,9 +96,17 @@ public class InlineProjections
             return Result.empty();
         }
 
-        Sets.SetView<VariableReferenceExpression> targets = extractInliningTargets(parent, child, context);
+        Optional<ProjectNode> newProjectNode = applyInlineProjection(parent, child, context.getVariableAllocator().getTypes(), functionResolution);
+
+        return newProjectNode.map(Result::ofPlanNode).orElseGet(Result::empty);
+    }
+
+    @NotNull
+    static Optional<ProjectNode> applyInlineProjection(ProjectNode parent, ProjectNode child, TypeProvider types, FunctionResolution functionResolution)
+    {
+        Sets.SetView<VariableReferenceExpression> targets = extractInliningTargets(parent, child, types, functionResolution);
         if (targets.isEmpty()) {
-            return Result.empty();
+            return Optional.empty();
         }
 
         // inline the expressions
@@ -105,7 +115,7 @@ public class InlineProjections
                 .entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> inlineReferences(entry.getValue(), assignments, context.getVariableAllocator().getTypes())));
+                        entry -> inlineReferences(entry.getValue(), assignments, types)));
 
         // Synthesize identity assignments for the inputs of expressions that were inlined
         // to place in the child projection.
@@ -115,7 +125,7 @@ public class InlineProjections
                 .entrySet().stream()
                 .filter(entry -> targets.contains(entry.getKey()))
                 .map(Map.Entry::getValue)
-                .flatMap(expression -> extractInputs(expression, context.getVariableAllocator().getTypes()).stream())
+                .flatMap(expression -> extractInputs(expression, types).stream())
                 .collect(toSet());
 
         Builder childAssignments = Assignments.builder();
@@ -139,21 +149,21 @@ public class InlineProjections
             }
         }
 
-        return Result.ofPlanNode(
+        final ProjectNode newProjectNode = new ProjectNode(
+                parent.getSourceLocation(),
+                parent.getId(),
                 new ProjectNode(
                         parent.getSourceLocation(),
-                        parent.getId(),
-                        new ProjectNode(
-                                parent.getSourceLocation(),
-                                child.getId(),
-                                child.getSource(),
-                                childAssignments.build(),
-                                child.getLocality()),
-                        Assignments.copyOf(parentAssignments),
-                        parent.getLocality()));
+                        child.getId(),
+                        child.getSource(),
+                        childAssignments.build(),
+                        child.getLocality()),
+                Assignments.copyOf(parentAssignments),
+                parent.getLocality());
+        return Optional.of(newProjectNode);
     }
 
-    private RowExpression inlineReferences(RowExpression expression, Assignments assignments, TypeProvider types)
+    private static RowExpression inlineReferences(RowExpression expression, Assignments assignments, TypeProvider types)
     {
         if (isExpression(expression)) {
             Function<VariableReferenceExpression, Expression> mapping = variable -> {
@@ -167,7 +177,7 @@ public class InlineProjections
         return RowExpressionVariableInliner.inlineVariables(variable -> assignments.getMap().getOrDefault(variable, variable), expression);
     }
 
-    private Sets.SetView<VariableReferenceExpression> extractInliningTargets(ProjectNode parent, ProjectNode child, Context context)
+    private static Sets.SetView<VariableReferenceExpression> extractInliningTargets(ProjectNode parent, ProjectNode child, TypeProvider types, FunctionResolution functionResolution)
     {
         // candidates for inlining are
         //   1. references to simple constants
@@ -178,12 +188,11 @@ public class InlineProjections
         // which come from the child, as opposed to an enclosing scope.
 
         Set<VariableReferenceExpression> childOutputSet = ImmutableSet.copyOf(child.getOutputVariables());
-        TypeProvider types = context.getVariableAllocator().getTypes();
 
         Map<VariableReferenceExpression, Long> dependencies = parent.getAssignments()
                 .getExpressions()
                 .stream()
-                .flatMap(expression -> extractInputs(expression, context.getVariableAllocator().getTypes()).stream())
+                .flatMap(expression -> extractInputs(expression, types).stream())
                 .filter(childOutputSet::contains)
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
@@ -196,7 +205,7 @@ public class InlineProjections
         // change the semantics of those expressions
         Set<VariableReferenceExpression> tryArguments = parent.getAssignments()
                 .getExpressions().stream()
-                .flatMap(expression -> extractTryArguments(expression, types).stream())
+                .flatMap(expression -> extractTryArguments(expression, types, functionResolution).stream())
                 .collect(toSet());
 
         Set<VariableReferenceExpression> singletons = dependencies.entrySet().stream()
@@ -209,7 +218,7 @@ public class InlineProjections
         return Sets.union(singletons, constants);
     }
 
-    private Set<VariableReferenceExpression> extractTryArguments(RowExpression expression, TypeProvider types)
+    private static Set<VariableReferenceExpression> extractTryArguments(RowExpression expression, TypeProvider types, FunctionResolution functionResolution)
     {
         if (isExpression(expression)) {
             return AstUtils.preOrder(castToExpression(expression))
