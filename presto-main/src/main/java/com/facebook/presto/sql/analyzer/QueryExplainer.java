@@ -24,6 +24,7 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.LogicalPlanner;
+import com.facebook.presto.sql.planner.OptTrace;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanFragmenter;
 import com.facebook.presto.sql.planner.PlanOptimizers;
@@ -126,10 +127,14 @@ public class QueryExplainer
 
         switch (planType) {
             case LOGICAL:
+                OptTrace.begin(session.getOptTrace(), "getLogicalPlan");
                 Plan plan = getLogicalPlan(session, statement, parameters, warningCollector);
+                OptTrace.end(session.getOptTrace(), "getLogicalPlan");
                 return PlanPrinter.textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata.getFunctionAndTypeManager(), plan.getStatsAndCosts(), session, 0, verbose);
             case DISTRIBUTED:
+                OptTrace.begin(session.getOptTrace(), "getDistributedPlan");
                 SubPlan subPlan = getDistributedPlan(session, statement, parameters, warningCollector);
+                OptTrace.end(session.getOptTrace(), "getDistributedPlan");
                 return PlanPrinter.textDistributedPlan(subPlan, metadata.getFunctionAndTypeManager(), session, verbose);
             case IO:
                 return IOPlanPrinter.textIOPlan(getLogicalPlan(session, statement, parameters, warningCollector).getRoot(), metadata, session);

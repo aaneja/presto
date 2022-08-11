@@ -244,6 +244,7 @@ public final class SystemSessionProperties
     public static final String HASH_BASED_DISTINCT_LIMIT_ENABLED = "hash_based_distinct_limit_enabled";
     public static final String HASH_BASED_DISTINCT_LIMIT_THRESHOLD = "hash_based_distinct_limit_threshold";
     public static final String QUICK_DISTINCT_LIMIT_ENABLED = "quick_distinct_limit_enabled";
+    public static final String ENABLE_OPTIMIZER_TRACE = "enable_optimizer_trace";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1338,6 +1339,11 @@ public final class SystemSessionProperties
                         LEAF_NODE_LIMIT_ENABLED,
                         "Throw exception if the number of leaf nodes in logical plan exceeds threshold set in max_leaf_nodes_in_plan",
                         compilerConfig.getLeafNodeLimitEnabled(),
+                        false),
+                booleanProperty(
+                        ENABLE_OPTIMIZER_TRACE,
+                        "Enable optimizer tracing",
+                        featuresConfig.isEnableOptimizerTrace(),
                         false));
     }
 
@@ -2238,7 +2244,6 @@ public final class SystemSessionProperties
     {
         return session.getSystemProperty(HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD, Double.class);
     }
-
     public static boolean isQuickDistinctLimitEnabled(Session session)
     {
         return session.getSystemProperty(QUICK_DISTINCT_LIMIT_ENABLED, Boolean.class);
@@ -2252,5 +2257,10 @@ public final class SystemSessionProperties
     public static boolean trackHistoryBasedPlanStatisticsEnabled(Session session)
     {
         return session.getSystemProperty(TRACK_HISTORY_BASED_PLAN_STATISTICS, Boolean.class);
+    }
+
+    public static boolean isEnableOptimizerTrace(Session session)
+    {
+        return session.getSystemProperty(ENABLE_OPTIMIZER_TRACE, Boolean.class);
     }
 }

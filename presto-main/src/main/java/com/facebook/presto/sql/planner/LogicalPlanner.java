@@ -119,6 +119,7 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Streams.zip;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+
 public class LogicalPlanner
 {
     public enum Stage
@@ -186,14 +187,20 @@ public class LogicalPlanner
 
     public Plan plan(Analysis analysis, Stage stage)
     {
+        OptTrace.begin(this.session.getOptTrace(), "LogicalPlanner.plan (stage %s)", stage.name());
         PlanNode root = planStatement(analysis, analysis.getStatement());
+
+        OptTrace.assignTraceIds(this.session.getOptTrace(), root, analysis.getStatement());
+        OptTrace.trace(this.session.getOptTrace(), root, 0, "Initial root : ");
 
         planChecker.validateIntermediatePlan(root, session, metadata, sqlParser, variableAllocator.getTypes(), warningCollector);
         boolean enableVerboseRuntimeStats = SystemSessionProperties.isVerboseRuntimeStatsEnabled(session);
         if (stage.ordinal() >= Stage.OPTIMIZED.ordinal()) {
             for (PlanOptimizer optimizer : planOptimizers) {
                 long start = System.nanoTime();
+                OptTrace.begin(this.session.getOptTrace(), "optimize (%s)", optimizer.getClass().getSimpleName());
                 root = optimizer.optimize(root, session, variableAllocator.getTypes(), variableAllocator, idAllocator, warningCollector);
+                OptTrace.end(this.session.getOptTrace(), "optimize (%s)", optimizer.getClass().getSimpleName());
                 requireNonNull(root, format("%s returned a null plan", optimizer.getClass().getName()));
                 if (enableVerboseRuntimeStats) {
                     session.getRuntimeStats().addMetricValue(String.format("optimizer%sTimeNanos", optimizer.getClass().getSimpleName()), NANO, System.nanoTime() - start);
@@ -206,6 +213,8 @@ public class LogicalPlanner
             planChecker.validateFinalPlan(root, session, metadata, sqlParser, variableAllocator.getTypes(), warningCollector);
         }
 
+        OptTrace.trace(this.session.getOptTrace(), root, 0, "Final root : ");
+        OptTrace.end(this.session.getOptTrace(), "LogicalPlanner.plan (stage %s)", stage.name());
         TypeProvider types = variableAllocator.getTypes();
         return new Plan(root, types, computeStats(root, types));
     }
@@ -235,6 +244,7 @@ public class LogicalPlanner
                     Optional.empty());
             return new OutputNode(source.getSourceLocation(), idAllocator.getNextId(), source, ImmutableList.of("rows"), ImmutableList.of(variable));
         }
+
         return createOutputPlan(planStatementWithoutOutput(analysis, statement), analysis);
     }
 

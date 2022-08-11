@@ -158,6 +158,12 @@ public class SqlQueryExecution
             PlanChecker planChecker,
             PartialResultQueryManager partialResultQueryManager)
     {
+        if (!stateMachine.getSession().getOptTrace().isPresent()) {
+            stateMachine.getSession().allocOptTrace("/tmp");
+            final BasicQueryInfo queryInfo = stateMachine.getBasicQueryInfo(Optional.empty());
+            stateMachine.getSession().getOptTrace().ifPresent(optTrace -> optTrace.setQueryInfo(queryInfo));
+        }
+
         try (SetThreadName ignored = new SetThreadName("Query-%s", stateMachine.getQueryId())) {
             this.slug = requireNonNull(slug, "slug is null");
             this.retryCount = retryCount;

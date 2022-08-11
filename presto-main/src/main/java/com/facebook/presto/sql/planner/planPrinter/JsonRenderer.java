@@ -18,6 +18,7 @@ import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonRawValue;
 
 import java.util.List;
@@ -65,6 +66,7 @@ public class JsonRenderer
                         .collect(toImmutableList()));
     }
 
+    @JsonPropertyOrder({"name", "identifier", "details", "children"})
     public static class JsonRenderedNode
     {
         private final Optional<SourceLocation> sourceLocation;
@@ -87,13 +89,13 @@ public class JsonRenderer
             this.remoteSources = requireNonNull(remoteSources, "id is null");
         }
 
-        @JsonProperty
+//        @JsonProperty
         public Optional<SourceLocation> getSourceLocation()
         {
             return sourceLocation;
         }
 
-        @JsonProperty
+//        @JsonProperty
         public String getId()
         {
             return id;
@@ -123,7 +125,7 @@ public class JsonRenderer
             return children;
         }
 
-        @JsonProperty
+//        @JsonProperty
         public List<String> getRemoteSources()
         {
             return remoteSources;

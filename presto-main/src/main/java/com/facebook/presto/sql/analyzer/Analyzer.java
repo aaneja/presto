@@ -20,6 +20,7 @@ import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.function.FunctionHandle;
 import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.planner.OptTrace;
 import com.facebook.presto.sql.rewrite.StatementRewrite;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
@@ -87,11 +88,14 @@ public class Analyzer
 
     public Analysis analyzeSemantic(Statement statement, boolean isDescribe)
     {
+        OptTrace.begin(session.getOptTrace(), "analyzeSemantic");
+        OptTrace.queryInfo(session.getOptTrace());
         Statement rewrittenStatement = StatementRewrite.rewrite(session, metadata, sqlParser, queryExplainer, statement, parameters, parameterLookup, accessControl, warningCollector);
         Analysis analysis = new Analysis(rewrittenStatement, parameterLookup, isDescribe);
         StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session, warningCollector);
         analyzer.analyze(rewrittenStatement, Optional.empty());
         analyzeForUtilizedColumns(analysis, analysis.getStatement());
+        OptTrace.end(session.getOptTrace(), "analyzeSemantic");
         return analysis;
     }
 

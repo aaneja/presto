@@ -21,6 +21,7 @@ import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.sql.planner.OptTrace;
 import com.facebook.presto.sql.planner.PlanVariableAllocator;
 
 import java.util.Optional;
@@ -58,6 +59,18 @@ public interface Rule<T>
         void checkTimeoutNotExhausted();
 
         WarningCollector getWarningCollector();
+
+        default Optional<OptTrace> getOptTrace()
+        {
+            Optional<OptTrace> optTrace = null;
+            Session session = this.getSession();
+
+            if (session != null) {
+                optTrace = session.getOptTrace();
+            }
+
+            return optTrace;
+        }
     }
 
     final class Result
