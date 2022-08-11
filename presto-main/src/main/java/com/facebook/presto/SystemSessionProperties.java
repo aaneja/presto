@@ -259,6 +259,7 @@ public final class SystemSessionProperties
     public static final String NATIVE_ORDER_BY_SPILL_MEMORY_THRESHOLD = "order_by_spill_memory_threshold";
     public static final String NATIVE_EXECUTION_ENABLED = "native_execution_enabled";
     public static final String NATIVE_EXECUTION_EXECUTABLE_PATH = "native_execution_executable_path";
+    public static final String ENABLE_OPTIMIZER_TRACE = "enable_optimizer_trace";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1426,6 +1427,11 @@ public final class SystemSessionProperties
                         PUSH_AGGREGATION_BELOW_JOIN_BYTE_REDUCTION_THRESHOLD,
                         "Byte reduction ratio threshold at which to disable pushdown of aggregation below inner join",
                         featuresConfig.getPushAggregationBelowJoinByteReductionThreshold(),
+                        false),
+                booleanProperty(
+                        ENABLE_OPTIMIZER_TRACE,
+                        "Enable optimizer tracing",
+                        featuresConfig.isEnableOptimizerTrace(),
                         false));
     }
 
@@ -2390,5 +2396,9 @@ public final class SystemSessionProperties
     public static double getPushAggregationBelowJoinByteReductionThreshold(Session session)
     {
         return session.getSystemProperty(PUSH_AGGREGATION_BELOW_JOIN_BYTE_REDUCTION_THRESHOLD, Double.class);
+    }
+    public static boolean isEnableOptimizerTrace(Session session)
+    {
+        return session.getSystemProperty(ENABLE_OPTIMIZER_TRACE, Boolean.class);
     }
 }

@@ -43,6 +43,7 @@ import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.planner.OptTrace;
 import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningHandle;
 import com.facebook.presto.sql.planner.PartitioningProviderManager;
@@ -212,12 +213,14 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitPlan(PlanNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             return rebaseAndDeriveProperties(node, planChild(node, preferredProperties));
         }
 
         @Override
         public PlanWithProperties visitProject(ProjectNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             Map<VariableReferenceExpression, VariableReferenceExpression> identities = computeIdentityTranslations(node.getAssignments());
             PreferredProperties translatedPreferred = preferredProperties.translate(symbol -> Optional.ofNullable(identities.get(symbol)));
 
@@ -227,6 +230,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitOutput(OutputNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.undistributed());
 
             if (!child.getProperties().isSingleNode() && isForceSingleNodeOutput(session)) {
@@ -241,6 +245,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitEnforceSingleRow(EnforceSingleRowNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.any());
 
             if (!child.getProperties().isSingleNode()) {
@@ -255,6 +260,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitAggregation(AggregationNode node, PreferredProperties parentPreferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, parentPreferredProperties);
             Set<VariableReferenceExpression> partitioningRequirement = ImmutableSet.copyOf(node.getGroupingKeys());
 
             boolean preferSingleNode = hasSingleNodeExecutionPreference(node, metadata.getFunctionAndTypeManager());
@@ -303,6 +309,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitGroupId(GroupIdNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PreferredProperties childPreference = preferredProperties.translate(translateGroupIdVariables(node));
             PlanWithProperties child = planChild(node, childPreference);
             return rebaseAndDeriveProperties(node, child);
@@ -326,6 +333,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitMarkDistinct(MarkDistinctNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PreferredProperties preferredChildProperties = PreferredProperties.partitionedWithLocal(ImmutableSet.copyOf(node.getDistinctVariables()), grouped(node.getDistinctVariables()))
                     .mergeWithParent(preferredProperties, !isExactPartitioningPreferred(session));
             PlanWithProperties child = accept(node.getSource(), preferredChildProperties);
@@ -350,6 +358,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitWindow(WindowNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             List<LocalProperty<VariableReferenceExpression>> desiredProperties = new ArrayList<>();
             if (!node.getPartitionBy().isEmpty()) {
                 desiredProperties.add(new GroupingProperty<>(node.getPartitionBy()));
@@ -389,6 +398,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitRowNumber(RowNumberNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             if (node.getPartitionBy().isEmpty()) {
                 PlanWithProperties child = planChild(node, PreferredProperties.undistributed());
 
@@ -427,6 +437,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitTopNRowNumber(TopNRowNumberNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PreferredProperties preferredChildProperties;
             Function<PlanNode, PlanNode> addExchange;
 
@@ -470,6 +481,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitTopN(TopNNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child;
             switch (node.getStep()) {
                 case SINGLE:
@@ -493,6 +505,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitSort(SortNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.undistributed());
 
             if (child.getProperties().isSingleNode()) {
@@ -540,6 +553,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitLimit(LimitNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.any());
 
             if (!child.getProperties().isSingleNode()) {
@@ -558,6 +572,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitDistinctLimit(DistinctLimitNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.any());
 
             if (!child.getProperties().isSingleNode()) {
@@ -575,6 +590,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitFilter(FilterNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             if (node.getSource() instanceof TableScanNode && metadata.isLegacyGetLayoutSupported(session, ((TableScanNode) node.getSource()).getTable())) {
                 // If isLegacyGetLayoutSupported, then we can continue with legacy predicate pushdown logic.
                 // Otherwise, we leave the filter as is in the plan as it will be pushed into the TableScan by filter pushdown logic in the connector.
@@ -587,12 +603,14 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitTableScan(TableScanNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             return planTableScan(node, TRUE_CONSTANT);
         }
 
         @Override
         public PlanWithProperties visitTableWriter(TableWriterNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties source = accept(node.getSource(), preferredProperties);
 
             Optional<PartitioningScheme> shufflePartitioningScheme = node.getTablePartitioningScheme();
@@ -662,6 +680,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitValues(ValuesNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
@@ -672,6 +691,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitExplainAnalyze(ExplainAnalyzeNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties child = planChild(node, PreferredProperties.any());
 
             // if the child is already a gathering exchange, don't add another
@@ -690,6 +710,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitStatisticsWriterNode(StatisticsWriterNode node, PreferredProperties context)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, context);
             PlanWithProperties child = planChild(node, PreferredProperties.any());
 
             // if the child is already a gathering exchange, don't add another
@@ -709,6 +730,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitTableFinish(TableFinishNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanNode child = planChild(node, PreferredProperties.any()).getNode();
 
             ExchangeNode gather;
@@ -758,6 +780,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitJoin(JoinNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             List<VariableReferenceExpression> leftVariables = node.getCriteria().stream()
                     .map(JoinNode.EquiJoinClause::getLeft)
                     .collect(toImmutableList());
@@ -769,6 +792,10 @@ public class AddExchanges
 
             if (distributionType == JoinNode.DistributionType.REPLICATED) {
                 PlanWithProperties left = accept(node.getLeft(), PreferredProperties.any());
+
+                if (OptTrace.satisfiesAnyJoinConstraint(session.getOptTrace(), node)) {
+                    return planReplicatedJoin(node, left);
+                }
 
                 // use partitioned join if probe side is naturally partitioned on join symbols (e.g: because of aggregation)
                 if (!node.getCriteria().isEmpty()
@@ -907,6 +934,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitSpatialJoin(SpatialJoinNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             SpatialJoinNode.DistributionType distributionType = node.getDistributionType();
 
             PlanWithProperties left = accept(node.getLeft(), PreferredProperties.any());
@@ -942,6 +970,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitUnnest(UnnestNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PreferredProperties translatedPreferred = preferredProperties.translate(variable -> node.getReplicateVariables().contains(variable) ? Optional.of(variable) : Optional.empty());
 
             return rebaseAndDeriveProperties(node, planChild(node, translatedPreferred));
@@ -950,6 +979,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitSemiJoin(SemiJoinNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             PlanWithProperties source;
             PlanWithProperties filteringSource;
 
@@ -1049,6 +1079,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitIndexJoin(IndexJoinNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             List<VariableReferenceExpression> joinColumns = node.getCriteria().stream()
                     .map(IndexJoinNode.EquiJoinClause::getProbe)
                     .collect(toImmutableList());
@@ -1112,6 +1143,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitIndexSource(IndexSourceNode node, PreferredProperties preferredProperties)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, preferredProperties);
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
@@ -1157,6 +1189,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitUnion(UnionNode node, PreferredProperties parentPreference)
         {
+            OptTrace.addPlanNodeToPreferredPropertiesMapping(session.getOptTrace(), node, parentPreference);
             Optional<PreferredProperties.Global> parentPartitioningPreference = parentPreference.getGlobalProperties();
 
             // case 1: parent provides preferred distributed partitioning

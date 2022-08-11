@@ -31,6 +31,7 @@ import com.facebook.presto.spi.security.SelectedRole;
 import com.facebook.presto.spi.session.ResourceEstimates;
 import com.facebook.presto.spi.session.SessionPropertyConfigurationManager.SystemSessionPropertyConfiguration;
 import com.facebook.presto.spi.tracing.Tracer;
+import com.facebook.presto.sql.planner.OptTrace;
 import com.facebook.presto.transaction.TransactionId;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableMap;
@@ -49,6 +50,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.SystemSessionProperties.isEnableOptimizerTrace;
 import static com.facebook.presto.SystemSessionProperties.isLegacyMapSubscript;
 import static com.facebook.presto.SystemSessionProperties.isLegacyRowFieldOrdinalAccessEnabled;
 import static com.facebook.presto.SystemSessionProperties.isLegacyTimestamp;
@@ -90,6 +92,7 @@ public final class Session
     private final AccessControlContext context;
     private final Optional<Tracer> tracer;
     private final WarningCollector warningCollector;
+    private Optional<OptTrace> optTrace;
 
     private final RuntimeStats runtimeStats = new RuntimeStats();
 
@@ -139,6 +142,7 @@ public final class Session
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.preparedStatements = requireNonNull(preparedStatements, "preparedStatements is null");
         this.sessionFunctions = requireNonNull(sessionFunctions, "sessionFunctions is null");
+        this.optTrace = Optional.ofNullable(null);
 
         ImmutableMap.Builder<ConnectorId, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.builder();
         connectorProperties.entrySet().stream()
@@ -168,6 +172,23 @@ public final class Session
     public String getUser()
     {
         return identity.getUser();
+    }
+
+    public Optional<OptTrace> getOptTrace()
+    {
+        return optTrace;
+    }
+
+    public void setOptTrace(Optional<OptTrace> optTraceParam)
+    {
+        optTrace = optTraceParam;
+    }
+
+    public void allocOptTrace(String dirPath)
+    {
+        if (isEnableOptimizerTrace(this)) {
+            setOptTrace(Optional.of(new OptTrace(dirPath, null, null)));
+        }
     }
 
     public Identity getIdentity()
