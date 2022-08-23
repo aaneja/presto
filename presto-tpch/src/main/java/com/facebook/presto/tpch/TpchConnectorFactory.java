@@ -45,7 +45,8 @@ public class TpchConnectorFactory
 
     public TpchConnectorFactory(int defaultSplitsPerNode)
     {
-        this(defaultSplitsPerNode, true, true);
+        //Make TPCH connector behave like Glue/HMS with no support for predicate pushdown or partitioning
+        this(defaultSplitsPerNode, false, false);
     }
 
     public TpchConnectorFactory(int defaultSplitsPerNode, boolean predicatePushdownEnabled, boolean partitioningEnabled)

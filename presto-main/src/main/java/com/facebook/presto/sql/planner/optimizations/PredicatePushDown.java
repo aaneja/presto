@@ -122,12 +122,14 @@ public class PredicatePushDown
     private final Metadata metadata;
     private final EffectivePredicateExtractor effectivePredicateExtractor;
     private final SqlParser sqlParser;
+    private final boolean enableDynamicFilter;
 
-    public PredicatePushDown(Metadata metadata, SqlParser sqlParser)
+    public PredicatePushDown(Metadata metadata, SqlParser sqlParser, boolean enableDynamicFilter)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.effectivePredicateExtractor = new EffectivePredicateExtractor(new RowExpressionDomainTranslator(metadata), metadata.getFunctionAndTypeManager());
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
+        this.enableDynamicFilter = enableDynamicFilter;
     }
 
     @Override
@@ -139,7 +141,7 @@ public class PredicatePushDown
         requireNonNull(idAllocator, "idAllocator is null");
 
         return SimplePlanRewriter.rewriteWith(
-                new Rewriter(variableAllocator, idAllocator, metadata, effectivePredicateExtractor, sqlParser, session),
+                new Rewriter(variableAllocator, idAllocator, metadata, effectivePredicateExtractor, sqlParser, session, enableDynamicFilter),
                 plan,
                 TRUE_CONSTANT);
     }
@@ -178,6 +180,7 @@ public class PredicatePushDown
         private final LogicalRowExpressions logicalRowExpressions;
         private final FunctionAndTypeManager functionAndTypeManager;
         private final ExternalCallExpressionChecker externalCallExpressionChecker;
+        private final boolean enableDynamicFilter;
 
         private Rewriter(
                 PlanVariableAllocator variableAllocator,
@@ -185,7 +188,7 @@ public class PredicatePushDown
                 Metadata metadata,
                 EffectivePredicateExtractor effectivePredicateExtractor,
                 SqlParser sqlParser,
-                Session session)
+                Session session, boolean enableDynamicFilter)
         {
             this.variableAllocator = requireNonNull(variableAllocator, "variableAllocator is null");
             this.idAllocator = requireNonNull(idAllocator, "idAllocator is null");
@@ -197,6 +200,8 @@ public class PredicatePushDown
             this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, new FunctionResolution(metadata.getFunctionAndTypeManager()), metadata.getFunctionAndTypeManager());
             this.functionAndTypeManager = metadata.getFunctionAndTypeManager();
             this.externalCallExpressionChecker = new ExternalCallExpressionChecker(functionAndTypeManager);
+            //Check if passed in check is true and default of session is true as well
+            this.enableDynamicFilter = enableDynamicFilter && isEnableDynamicFiltering(session);
         }
 
         @Override
@@ -532,9 +537,8 @@ public class PredicatePushDown
             PlanNode rightSource;
 
             List<RowExpression> joinFilter = joinFilterBuilder.build();
-            boolean dynamicFilterEnabled = isEnableDynamicFiltering(session);
             Map<String, VariableReferenceExpression> dynamicFilters = ImmutableMap.of();
-            if (dynamicFilterEnabled) {
+            if (enableDynamicFilter) {
                 DynamicFiltersResult dynamicFiltersResult = createDynamicFilters(node, equiJoinClauses, joinFilter, idAllocator, metadata.getFunctionAndTypeManager());
                 dynamicFilters = dynamicFiltersResult.getDynamicFilters();
                 leftPredicate = logicalRowExpressions.combineConjuncts(leftPredicate, logicalRowExpressions.combineConjuncts(dynamicFiltersResult.getPredicates()));
@@ -542,7 +546,7 @@ public class PredicatePushDown
 
             boolean equiJoinClausesUnmodified = ImmutableSet.copyOf(equiJoinClauses).equals(ImmutableSet.copyOf(node.getCriteria()));
 
-            if (dynamicFilterEnabled && !equiJoinClausesUnmodified) {
+            if (enableDynamicFilter && !equiJoinClausesUnmodified) {
                 leftSource = context.rewrite(new ProjectNode(idAllocator.getNextId(), node.getLeft(), leftProjections.build()), leftPredicate);
                 rightSource = context.rewrite(new ProjectNode(idAllocator.getNextId(), node.getRight(), rightProjections.build()), rightPredicate);
             }
@@ -573,7 +577,7 @@ public class PredicatePushDown
             if (leftSource != node.getLeft() ||
                     rightSource != node.getRight() ||
                     !filtersEquivalent ||
-                    (dynamicFilterEnabled && !dynamicFilters.equals(node.getDynamicFilters())) ||
+                    (enableDynamicFilter && !dynamicFilters.equals(node.getDynamicFilters())) ||
                     !equiJoinClausesUnmodified) {
                 leftSource = new ProjectNode(node.getSourceLocation(), idAllocator.getNextId(), leftSource, leftProjections.build(), leftLocality);
                 rightSource = new ProjectNode(node.getSourceLocation(), idAllocator.getNextId(), rightSource, rightProjections.build(), rightLocality);
@@ -1455,7 +1459,7 @@ public class PredicatePushDown
             PlanNode rewrittenFilteringSource = context.rewrite(node.getFilteringSource(), logicalRowExpressions.combineConjuncts(filteringSourceConjuncts));
 
             Map<String, VariableReferenceExpression> dynamicFilters = ImmutableMap.of();
-            if (isEnableDynamicFiltering(session)) {
+            if (enableDynamicFilter) {
                 DynamicFiltersResult dynamicFiltersResult = createDynamicFilters(node.getSourceJoinVariable(), node.getFilteringSourceJoinVariable(), idAllocator, metadata.getFunctionAndTypeManager());
                 dynamicFilters = dynamicFiltersResult.getDynamicFilters();
                 // add filter node on top of probe

@@ -329,7 +329,7 @@ public class TestReorderWindows
                         getQueryRunner().getStatsCalculator(),
                         getQueryRunner().getCostCalculator(),
                         new TranslateExpressions(getQueryRunner().getMetadata(), new SqlParser()).rules()),
-                new PredicatePushDown(getMetadata(), getQueryRunner().getSqlParser()),
+                new PredicatePushDown(getMetadata(), getQueryRunner().getSqlParser(), false),
                 new IterativeOptimizer(
                         new RuleStatsRecorder(),
                         getQueryRunner().getStatsCalculator(),

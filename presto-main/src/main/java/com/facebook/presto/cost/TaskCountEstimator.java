@@ -52,6 +52,7 @@ public class TaskCountEstimator
 
     public int estimateSourceDistributedTaskCount()
     {
-        return numberOfNodes.getAsInt();
+        //Temp change to simulate 4 worker nodes
+        return 4;
     }
 }

@@ -435,7 +435,7 @@ public class TestPredicatePushdown
     public void testPredicatePushDownCreatesValidJoin()
     {
         RuleTester tester = new RuleTester();
-        tester.assertThat(new PredicatePushDown(tester.getMetadata(), tester.getSqlParser()))
+        tester.assertThat(new PredicatePushDown(tester.getMetadata(), tester.getSqlParser(), false))
                 .on(p ->
                         p.join(INNER,
                                 p.filter(p.comparison(OperatorType.EQUAL, p.variable("a1"), constant(1L, INTEGER)),
