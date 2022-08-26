@@ -550,7 +550,12 @@ public class PlanOptimizers
                 ruleStats,
                 statsCalculator,
                 estimatedExchangesCostCalculator,
-                ImmutableSet.of(new ReorderJoins(costComparator, metadata))));
+                ImmutableSet.of(
+                        new RemoveRedundantIdentityProjections(),
+                        new InlineProjections(metadata.getFunctionAndTypeManager()),
+                        new PruneRedundantProjectionAssignments(),
+                        new PlanRemoteProjections(metadata.getFunctionAndTypeManager()),
+                        new ReorderJoins(costComparator, metadata))));
 
         builder.add(new OptimizeMixedDistinctAggregations(metadata));
         builder.add(new IterativeOptimizer(
