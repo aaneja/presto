@@ -27,6 +27,7 @@ import io.airlift.tpch.TpchEntity;
 import io.airlift.tpch.TpchTable;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.facebook.presto.tpch.TpchRecordSet.createTpchRecordSet;
 import static io.airlift.tpch.TpchColumnTypes.IDENTIFIER;
@@ -43,7 +44,23 @@ public class TpchRecordSetProvider
 
         TpchTable<?> tpchTable = TpchTable.getTable(tableName);
 
-        return getRecordSet(tpchTable, columns, tpchSplit.getTableHandle().getScaleFactor(), tpchSplit.getPartNumber(), tpchSplit.getTotalParts(), tpchSplit.getPredicate());
+        return getRecordSet(tpchTable, columns, tpchSplit.getTableHandle().getScaleFactor(), tpchSplit.getPartNumber(), tpchSplit.getTotalParts(),
+                tpchSplit.getPredicate(), Optional.empty());
+    }
+
+    public RecordSet getRecordSet(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorSplit split,
+            List<? extends ColumnHandle> columns,
+            Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate)
+    {
+        TpchSplit tpchSplit = (TpchSplit) split;
+
+        String tableName = tpchSplit.getTableHandle().getTableName();
+
+        TpchTable<?> tpchTable = TpchTable.getTable(tableName);
+
+        return getRecordSet(tpchTable, columns, tpchSplit.getTableHandle().getScaleFactor(), tpchSplit.getPartNumber(), tpchSplit.getTotalParts(),
+                tpchSplit.getPredicate(),
+                dynamicFilterPredicate);
     }
 
     public <E extends TpchEntity> RecordSet getRecordSet(
@@ -52,7 +69,7 @@ public class TpchRecordSetProvider
             double scaleFactor,
             int partNumber,
             int totalParts,
-            TupleDomain<ColumnHandle> predicate)
+            TupleDomain<ColumnHandle> predicate, Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate)
     {
         ImmutableList.Builder<TpchColumn<E>> builder = ImmutableList.builder();
         for (ColumnHandle column : columns) {
@@ -65,7 +82,7 @@ public class TpchRecordSetProvider
             }
         }
 
-        return createTpchRecordSet(table, builder.build(), scaleFactor, partNumber + 1, totalParts, predicate);
+        return createTpchRecordSet(table, builder.build(), scaleFactor, partNumber + 1, totalParts, predicate, dynamicFilterPredicate);
     }
 
     private static class RowNumberTpchColumn<E extends TpchEntity>

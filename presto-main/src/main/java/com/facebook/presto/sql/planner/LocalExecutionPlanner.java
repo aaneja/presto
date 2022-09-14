@@ -1388,6 +1388,7 @@ public class LocalExecutionPlanner
             Optional<DynamicFilterExtractResult> extractDynamicFilterResult = filterExpression.map(DynamicFilters::extractDynamicFilters);
 
             // Extract the static ones
+            //We reassigned filterExpression to just static filters
             filterExpression = extractDynamicFilterResult
                     .map(DynamicFilterExtractResult::getStaticConjuncts)
                     .map(logicalRowExpressions::combineConjuncts);

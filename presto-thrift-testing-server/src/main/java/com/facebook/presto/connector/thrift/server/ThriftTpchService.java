@@ -48,6 +48,7 @@ import javax.annotation.PreDestroy;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.facebook.airlift.concurrent.Threads.threadsNamed;
@@ -300,7 +301,7 @@ public class ThriftTpchService
                 schemaNameToScaleFactor(splitInfo.getSchemaName()),
                 splitInfo.getPartNumber(),
                 splitInfo.getTotalParts(),
-                TupleDomain.all()));
+                TupleDomain.all(), Optional.empty()));
     }
 
     private static List<String> getSchemaNames(String schemaNameOrNull)

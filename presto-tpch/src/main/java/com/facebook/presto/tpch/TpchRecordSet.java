@@ -31,6 +31,7 @@ import io.airlift.tpch.TpchTable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.tpch.TpchMetadata.getPrestoType;
@@ -43,29 +44,13 @@ import static java.util.Objects.requireNonNull;
 public class TpchRecordSet<E extends TpchEntity>
         implements RecordSet
 {
-    public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(TpchTable<E> table, double scaleFactor)
-    {
-        return createTpchRecordSet(table, table.getColumns(), scaleFactor, 1, 1, TupleDomain.all());
-    }
-
-    public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(
-            TpchTable<E> table,
-            List<TpchColumn<E>> columns,
-            double scaleFactor,
-            int part,
-            int partCount,
-            TupleDomain<ColumnHandle> predicate)
-    {
-        return new TpchRecordSet<>(table.createGenerator(scaleFactor, part, partCount), table, columns, predicate);
-    }
-
+    private final Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate;
     private final Iterable<E> rows;
     private final TpchTable<E> table;
     private final List<TpchColumn<E>> columns;
     private final List<Type> columnTypes;
     private final TupleDomain<ColumnHandle> predicate;
-
-    public TpchRecordSet(Iterable<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate)
+    public TpchRecordSet(Iterable<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate, Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate)
     {
         this.rows = requireNonNull(rows, "rows is null");
         this.table = requireNonNull(table, "table is null");
@@ -74,6 +59,23 @@ public class TpchRecordSet<E extends TpchEntity>
                 .map(TpchMetadata::getPrestoType)
                 .collect(toImmutableList());
         this.predicate = requireNonNull(predicate, "predicate is null");
+        this.dynamicFilterPredicate = requireNonNull(dynamicFilterPredicate, "dynamicFilterPredicate is null");
+    }
+
+    public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(TpchTable<E> table, double scaleFactor)
+    {
+        return createTpchRecordSet(table, table.getColumns(), scaleFactor, 1, 1, TupleDomain.all(), Optional.empty());
+    }
+
+    public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(
+            TpchTable<E> table,
+            List<TpchColumn<E>> columns,
+            double scaleFactor,
+            int part,
+            int partCount,
+            TupleDomain<ColumnHandle> predicate, Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate)
+    {
+        return new TpchRecordSet<>(table.createGenerator(scaleFactor, part, partCount), table, columns, predicate, dynamicFilterPredicate);
     }
 
     @Override
@@ -85,7 +87,7 @@ public class TpchRecordSet<E extends TpchEntity>
     @Override
     public RecordCursor cursor()
     {
-        return new TpchRecordCursor<>(rows.iterator(), table, columns, predicate);
+        return new TpchRecordCursor<>(rows.iterator(), table, columns, predicate, dynamicFilterPredicate);
     }
 
     public static final class TpchRecordCursor<E extends TpchEntity>
@@ -95,15 +97,17 @@ public class TpchRecordSet<E extends TpchEntity>
         private final TpchTable<E> table;
         private final List<TpchColumn<E>> columns;
         private final TupleDomain<ColumnHandle> predicate;
+        private final Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate;
         private E row;
         private boolean closed;
 
-        public TpchRecordCursor(Iterator<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate)
+        public TpchRecordCursor(Iterator<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate, Optional<TupleDomain<ColumnHandle>> dynamicFilterPredicate)
         {
             this.rows = requireNonNull(rows, "rows is null");
             this.table = requireNonNull(table, "table is null");
             this.columns = requireNonNull(columns, "columns is null");
             this.predicate = requireNonNull(predicate, "predicate is null");
+            this.dynamicFilterPredicate = requireNonNull(dynamicFilterPredicate, "dynamicFilterPredicate is null");
         }
 
         @Override
@@ -208,14 +212,21 @@ public class TpchRecordSet<E extends TpchEntity>
 
         private boolean rowMatchesPredicate()
         {
-            if (predicate.isAll()) {
+//            if(dynamicFilterPredicate.isPresent() && !dynamicFilterPredicate.get().isAll()) {
+//                System.out.println("dynamicFilterPredicate is present");
+//            }
+
+            TupleDomain<ColumnHandle> effectivePredicate = dynamicFilterPredicate.isPresent() ?
+                    predicate.intersect(dynamicFilterPredicate.get()) : predicate;
+
+            if (effectivePredicate.isAll()) {
                 return true;
             }
-            if (predicate.isNone()) {
+            if (effectivePredicate.isNone()) {
                 return false;
             }
 
-            Map<ColumnHandle, NullableValue> rowMap = predicate.getDomains().get().keySet().stream()
+            Map<ColumnHandle, NullableValue> rowMap = effectivePredicate.getDomains().get().keySet().stream()
                     .collect(toImmutableMap(
                             column -> column,
                             column -> {
@@ -227,7 +238,7 @@ public class TpchRecordSet<E extends TpchEntity>
 
             TupleDomain<ColumnHandle> rowTupleDomain = TupleDomain.fromFixedValues(rowMap);
 
-            return predicate.contains(rowTupleDomain);
+            return effectivePredicate.contains(rowTupleDomain);
         }
 
         private Object getPrestoObject(TpchColumn<E> column, Type type)

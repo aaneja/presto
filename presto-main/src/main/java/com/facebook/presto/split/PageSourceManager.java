@@ -85,6 +85,7 @@ public class PageSourceManager
                     columns,
                     split.getSplitContext());
         }
+        //If no table layout  is present, use the old API
         return getPageSourceProvider(split).createPageSource(split.getTransactionHandle(), connectorSession, split.getConnectorSplit(), columns, split.getSplitContext());
     }
 

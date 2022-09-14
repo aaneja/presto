@@ -13,18 +13,25 @@
  */
 package com.facebook.presto.tpch;
 
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorHandleResolver;
+import com.facebook.presto.spi.ConnectorPageSource;
+import com.facebook.presto.spi.ConnectorSession;
+import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.NodeManager;
+import com.facebook.presto.spi.RecordPageSource;
+import com.facebook.presto.spi.SplitContext;
 import com.facebook.presto.spi.connector.Connector;
 import com.facebook.presto.spi.connector.ConnectorContext;
 import com.facebook.presto.spi.connector.ConnectorFactory;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
-import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.transaction.IsolationLevel;
 
+import java.util.List;
 import java.util.Map;
 
 import static com.google.common.base.MoreObjects.firstNonNull;
@@ -95,9 +102,9 @@ public class TpchConnectorFactory
             }
 
             @Override
-            public ConnectorRecordSetProvider getRecordSetProvider()
+            public ConnectorPageSourceProvider getPageSourceProvider()
             {
-                return new TpchRecordSetProvider();
+                return new RecordPageSourceProvider();
             }
 
             @Override
@@ -126,5 +133,27 @@ public class TpchConnectorFactory
     protected boolean isPredicatePushdownEnabled()
     {
         return predicatePushdownEnabled;
+    }
+
+    public class RecordPageSourceProvider
+            implements ConnectorPageSourceProvider
+    {
+        private final TpchRecordSetProvider recordSetProvider;
+
+        public RecordPageSourceProvider()
+        {
+            this.recordSetProvider = new TpchRecordSetProvider();
+        }
+
+        @Override
+        public ConnectorPageSource createPageSource(
+                ConnectorTransactionHandle transactionHandle,
+                ConnectorSession session,
+                ConnectorSplit split,
+                List<ColumnHandle> columns,
+                SplitContext splitContext)
+        {
+            return new RecordPageSource(recordSetProvider.getRecordSet(transactionHandle, session, split, columns, splitContext.getDynamicFilterPredicate()));
+        }
     }
 }
