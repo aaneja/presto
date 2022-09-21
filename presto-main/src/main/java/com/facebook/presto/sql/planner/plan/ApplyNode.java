@@ -69,6 +69,12 @@ public class ApplyNode
      */
     private final String originSubqueryError;
 
+    /**
+     * Indicates whether this apply node appears inside a NOT expression
+     * i.e. anti-join
+     */
+    private final boolean antiJoinContext;
+
     @JsonCreator
     public ApplyNode(
             Optional<SourceLocation> sourceLocation,
@@ -77,9 +83,10 @@ public class ApplyNode
             @JsonProperty("subquery") PlanNode subquery,
             @JsonProperty("subqueryAssignments") Assignments subqueryAssignments,
             @JsonProperty("correlation") List<VariableReferenceExpression> correlation,
-            @JsonProperty("originSubqueryError") String originSubqueryError)
+            @JsonProperty("originSubqueryError") String originSubqueryError,
+            @JsonProperty("antiJoinContext") boolean antiJoinContext)
     {
-        this(sourceLocation, id, Optional.empty(), input, subquery, subqueryAssignments, correlation, originSubqueryError);
+        this(sourceLocation, id, Optional.empty(), input, subquery, subqueryAssignments, correlation, originSubqueryError, antiJoinContext);
     }
 
     public ApplyNode(
@@ -90,7 +97,8 @@ public class ApplyNode
             PlanNode subquery,
             Assignments subqueryAssignments,
             List<VariableReferenceExpression> correlation,
-            String originSubqueryError)
+            String originSubqueryError,
+            boolean antiJoinContext)
     {
         super(sourceLocation, id, statsEquivalentPlanNode);
         checkArgument(input.getOutputVariables().containsAll(correlation), "Input does not contain symbols from correlation");
@@ -101,6 +109,7 @@ public class ApplyNode
         this.subqueryAssignments = requireNonNull(subqueryAssignments, "assignments is null");
         this.correlation = ImmutableList.copyOf(requireNonNull(correlation, "correlation is null"));
         this.originSubqueryError = requireNonNull(originSubqueryError, "originSubqueryError is null");
+        this.antiJoinContext = antiJoinContext;
     }
 
     @JsonProperty
@@ -133,6 +142,12 @@ public class ApplyNode
         return originSubqueryError;
     }
 
+    @JsonProperty
+    public boolean getAntiJoinContext()
+    {
+        return antiJoinContext;
+    }
+
     @Override
     public List<PlanNode> getSources()
     {
@@ -158,12 +173,12 @@ public class ApplyNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         checkArgument(newChildren.size() == 2, "expected newChildren to contain 2 nodes");
-        return new ApplyNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), newChildren.get(0), newChildren.get(1), subqueryAssignments, correlation, originSubqueryError);
+        return new ApplyNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), newChildren.get(0), newChildren.get(1), subqueryAssignments, correlation, originSubqueryError, antiJoinContext);
     }
 
     @Override
     public PlanNode assignStatsEquivalentPlanNode(Optional<PlanNode> statsEquivalentPlanNode)
     {
-        return new ApplyNode(getSourceLocation(), getId(), statsEquivalentPlanNode, input, subquery, subqueryAssignments, correlation, originSubqueryError);
+        return new ApplyNode(getSourceLocation(), getId(), statsEquivalentPlanNode, input, subquery, subqueryAssignments, correlation, originSubqueryError, antiJoinContext);
     }
 }

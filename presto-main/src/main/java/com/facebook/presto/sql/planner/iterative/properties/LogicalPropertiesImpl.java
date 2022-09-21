@@ -17,7 +17,6 @@ import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.LogicalProperties;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.sql.planner.plan.AssignmentUtils;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.relational.FunctionResolution;
 
@@ -164,6 +163,19 @@ public class LogicalPropertiesImpl
         return maxCardProperty.isAtMost(n);
     }
 
+    public boolean canBeHomogenized(Set<VariableReferenceExpression> expressions, Set<VariableReferenceExpression> targetVariables)
+    {
+        Set<RowExpression> expressionsInTermsOfEquivalenceClassHeads = expressions.stream()
+                .map(equivalenceClassProperty::getEquivalenceClassHead)
+                .collect(Collectors.toSet());
+
+        Set<RowExpression> targetVariablesInTermsOfEquivalenceClassHeads = targetVariables.stream()
+                .map(equivalenceClassProperty::getEquivalenceClassHead)
+                .collect(Collectors.toSet());
+
+        return targetVariablesInTermsOfEquivalenceClassHeads.containsAll(expressionsInTermsOfEquivalenceClassHeads);
+    }
+
     private boolean keyRequirementSatisfied(Key keyRequirement)
     {
         if (maxCardProperty.isAtMostOne()) {
@@ -292,8 +304,11 @@ public class LogicalPropertiesImpl
             KeyProperty keyProperty = new KeyProperty(sourceProperties.keyProperty);
             resultProperties = new LogicalPropertiesImpl(equivalenceClassProperty, maxCardProperty, keyProperty);
         }
-        //project the properties using the output variables to ensure only the interesting constraints propagate
-        return projectProperties(resultProperties, AssignmentUtils.identityAssignments(outputVariables));
+
+        // Emit all interesting constraints, including ones that may be projected out
+        // Some optimizations (e.g. canBeHomogenized) may utilize these
+        return resultProperties;
+        //return projectProperties(resultProperties, AssignmentUtils.identityAssignments(outputVariables));
     }
 
     /**
@@ -412,10 +427,9 @@ public class LogicalPropertiesImpl
         }
 
         //since we likely merged equivalence class from left and right source we will normalize the key property
-        LogicalPropertiesImpl resultProperties = normalizeKeyPropertyAndSetMaxCard(keyProperty, maxCardProperty, equivalenceClassProperty);
-
-        //project the resulting properties by the output variables
-        return projectProperties(resultProperties, AssignmentUtils.identityAssignments(outputVariables));
+        // Emit all interesting constraints, including ones that may be projected out
+        // Some optimizations (e.g. canBeHomogenized) may utilize these
+        return normalizeKeyPropertyAndSetMaxCard(keyProperty, maxCardProperty, equivalenceClassProperty);
     }
 
     /**

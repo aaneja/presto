@@ -240,6 +240,8 @@ public class FeaturesConfig
     private boolean randomizeOuterJoinNullKey;
     private boolean isOptimizeConditionalAggregationEnabled;
     private boolean isRemoveRedundantDistinctAggregationEnabled = true;
+    private boolean inPredicatesAsInnerJoinsEnabled;
+    private double pushAggregationBelowJoinByteReductionThreshold = 1;
 
     public enum PartitioningPrecisionStrategy
     {
@@ -2229,17 +2231,17 @@ public class FeaturesConfig
         return this.nativeExecutionEnabled;
     }
 
+    public String getNativeExecutionExecutablePath()
+    {
+        return this.nativeExecutionExecutablePath;
+    }
+
     @Config("native-execution-executable-path")
     @ConfigDescription("Native execution executable file path")
     public FeaturesConfig setNativeExecutionExecutablePath(String nativeExecutionExecutablePath)
     {
         this.nativeExecutionExecutablePath = nativeExecutionExecutablePath;
         return this;
-    }
-
-    public String getNativeExecutionExecutablePath()
-    {
-        return this.nativeExecutionExecutablePath;
     }
 
     public boolean isRandomizeOuterJoinNullKeyEnabled()
@@ -2278,6 +2280,32 @@ public class FeaturesConfig
     public FeaturesConfig setRemoveRedundantDistinctAggregationEnabled(boolean isRemoveRedundantDistinctAggregationEnabled)
     {
         this.isRemoveRedundantDistinctAggregationEnabled = isRemoveRedundantDistinctAggregationEnabled;
+        return this;
+    }
+
+    public boolean isInPredicatesAsInnerJoinsEnabled()
+    {
+        return inPredicatesAsInnerJoinsEnabled;
+    }
+
+    @Config("optimizer.in-predicates-as-inner-joins-enabled")
+    @ConfigDescription("Enable rewrite of In predicates to INNER joins")
+    public FeaturesConfig setInPredicatesAsInnerJoinsEnabled(boolean inPredicatesAsInnerJoinsEnabled)
+    {
+        this.inPredicatesAsInnerJoinsEnabled = inPredicatesAsInnerJoinsEnabled;
+        return this;
+    }
+
+    public double getPushAggregationBelowJoinByteReductionThreshold()
+    {
+        return pushAggregationBelowJoinByteReductionThreshold;
+    }
+
+    @Config("optimizer.push-aggregation-below-join-byte-reduction-threshold")
+    @ConfigDescription("Byte reduction ratio threshold at which to disable pushdown of aggregation below inner join")
+    public FeaturesConfig setPushAggregationBelowJoinByteReductionThreshold(double pushAggregationBelowJoinByteReductionThreshold)
+    {
+        this.pushAggregationBelowJoinByteReductionThreshold = pushAggregationBelowJoinByteReductionThreshold;
         return this;
     }
 }
