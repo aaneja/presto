@@ -568,15 +568,10 @@ public class PlanOptimizers
         // After ReorderJoins, `statsEquivalentPlanNode` will be unassigned to intermediate join nodes.
         // We run it again to mark this for intermediate join nodes.
         builder.add(new StatsRecordingPlanOptimizer(optimizerStats, new HistoricalStatisticsEquivalentPlanMarkingOptimizer(statsCalculator)));
+
         //Predicate pushdown has dynamicFiltering off by default. Now that Joins are reordered, enable them and run again
         predicatePushDown = new StatsRecordingPlanOptimizer(optimizerStats, new PredicatePushDown(metadata, sqlParser, true));
-        builder.add(new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
-                        ImmutableSet.of(new EliminateCrossJoins())),
-                predicatePushDown,
-                simplifyRowExpressionOptimizer);
+        builder.add(predicatePushDown, simplifyRowExpressionOptimizer);
 
         builder.add(new IterativeOptimizer(
                 ruleStats,
