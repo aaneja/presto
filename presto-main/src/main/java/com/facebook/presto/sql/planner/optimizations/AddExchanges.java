@@ -800,7 +800,11 @@ public class AddExchanges
                 // use partitioned join if probe side is naturally partitioned on join symbols (e.g: because of aggregation)
                 if (!node.getCriteria().isEmpty()
                         && isNodePartitionedOn(left.getProperties(), leftVariables) && !left.getProperties().isSingleNode()) {
-                    return planPartitionedJoin(node, leftVariables, rightVariables, left);
+                    final PlanWithProperties planWithProperties = planPartitionedJoin(node, leftVariables, rightVariables, left);
+
+                    OptTrace.trace(session.getOptTrace(), planWithProperties.getNode(), 0,  "Switching to PARTITIONED Join because Probe side is naturally partitioned");
+
+                    return planWithProperties;
                 }
 
                 return planReplicatedJoin(node, left);
