@@ -26,6 +26,7 @@ import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesProviderImpl;
 import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregations;
+import com.facebook.presto.sql.planner.iterative.rule.AddNotNullFiltersOnJoins;
 import com.facebook.presto.sql.planner.iterative.rule.CanonicalizeExpressions;
 import com.facebook.presto.sql.planner.iterative.rule.CombineApproxPercentileFunctions;
 import com.facebook.presto.sql.planner.iterative.rule.CreatePartialTopN;
@@ -618,6 +619,7 @@ public class PlanOptimizers
                         new RemoveRedundantDistinctLimit(),
                         new RemoveRedundantAggregateDistinct(),
                         new RemoveRedundantIdentityProjections(),
+                        new AddNotNullFiltersOnJoins(metadata.getFunctionAndTypeManager()),
                         new PushAggregationThroughOuterJoin(metadata.getFunctionAndTypeManager()))));
 
         builder.add(new IterativeOptimizer(
