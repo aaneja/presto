@@ -66,6 +66,7 @@ public class JoinNode
     private final Optional<VariableReferenceExpression> rightHashVariable;
     private final Optional<DistributionType> distributionType;
     private final Map<String, VariableReferenceExpression> dynamicFilters;
+    private final Optional<Boolean> notNullPredicatesGenerated;
 
     @JsonCreator
     public JoinNode(
@@ -80,9 +81,10 @@ public class JoinNode
             @JsonProperty("leftHashVariable") Optional<VariableReferenceExpression> leftHashVariable,
             @JsonProperty("rightHashVariable") Optional<VariableReferenceExpression> rightHashVariable,
             @JsonProperty("distributionType") Optional<DistributionType> distributionType,
-            @JsonProperty("dynamicFilters") Map<String, VariableReferenceExpression> dynamicFilters)
+            @JsonProperty("dynamicFilters") Map<String, VariableReferenceExpression> dynamicFilters,
+            @JsonProperty("notNullPredicatesGenerated") Optional<Boolean> notNullPredicatesGenerated)
     {
-        this(sourceLocation, id, Optional.empty(), type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters);
+        this(sourceLocation, id, Optional.empty(), type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters, notNullPredicatesGenerated);
     }
 
     public JoinNode(
@@ -98,7 +100,8 @@ public class JoinNode
             Optional<VariableReferenceExpression> leftHashVariable,
             Optional<VariableReferenceExpression> rightHashVariable,
             Optional<DistributionType> distributionType,
-            Map<String, VariableReferenceExpression> dynamicFilters)
+            Map<String, VariableReferenceExpression> dynamicFilters,
+            Optional<Boolean> notNullPredicatesGenerated)
     {
         super(sourceLocation, id, statsEquivalentPlanNode);
         requireNonNull(type, "type is null");
@@ -111,6 +114,7 @@ public class JoinNode
         requireNonNull(rightHashVariable, "rightHashVariable is null");
         requireNonNull(distributionType, "distributionType is null");
         requireNonNull(dynamicFilters, "dynamicFilters is null");
+        requireNonNull(notNullPredicatesGenerated, "notNullPredicatesGenerated is null");
 
         this.type = type;
         this.left = left;
@@ -122,6 +126,7 @@ public class JoinNode
         this.rightHashVariable = rightHashVariable;
         this.distributionType = distributionType;
         this.dynamicFilters = ImmutableMap.copyOf(dynamicFilters);
+        this.notNullPredicatesGenerated = notNullPredicatesGenerated;
 
         Set<VariableReferenceExpression> inputVariables = ImmutableSet.<VariableReferenceExpression>builder()
                 .addAll(left.getOutputVariables())
@@ -172,7 +177,8 @@ public class JoinNode
                 rightHashVariable,
                 leftHashVariable,
                 distributionType,
-                ImmutableMap.of()); // dynamicFilters are invalid after flipping children
+                ImmutableMap.of(), // dynamicFilters are invalid after flipping children
+                notNullPredicatesGenerated);
     }
 
     @VisibleForTesting
@@ -255,6 +261,12 @@ public class JoinNode
     public Type getType()
     {
         return type;
+    }
+
+    @JsonProperty
+    public Optional<Boolean> notNullPredicatesGenerated()
+    {
+        return notNullPredicatesGenerated;
     }
 
     @JsonProperty
@@ -354,18 +366,18 @@ public class JoinNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         checkArgument(newChildren.size() == 2, "expected newChildren to contain 2 nodes");
-        return new JoinNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), type, newChildren.get(0), newChildren.get(1), criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters);
+        return new JoinNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), type, newChildren.get(0), newChildren.get(1), criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters, notNullPredicatesGenerated);
     }
 
     @Override
     public PlanNode assignStatsEquivalentPlanNode(Optional<PlanNode> statsEquivalentPlanNode)
     {
-        return new JoinNode(getSourceLocation(), getId(), statsEquivalentPlanNode, type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters);
+        return new JoinNode(getSourceLocation(), getId(), statsEquivalentPlanNode, type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, distributionType, dynamicFilters, notNullPredicatesGenerated);
     }
 
     public JoinNode withDistributionType(DistributionType distributionType)
     {
-        return new JoinNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, Optional.of(distributionType), dynamicFilters);
+        return new JoinNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), type, left, right, criteria, outputVariables, filter, leftHashVariable, rightHashVariable, Optional.of(distributionType), dynamicFilters, notNullPredicatesGenerated);
     }
 
     public boolean isCrossJoin()

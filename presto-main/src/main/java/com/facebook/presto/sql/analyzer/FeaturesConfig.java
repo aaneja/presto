@@ -241,6 +241,7 @@ public class FeaturesConfig
     private boolean isRemoveRedundantDistinctAggregationEnabled = true;
     private boolean inPredicatesAsInnerJoinsEnabled;
     private double pushAggregationBelowJoinByteReductionThreshold = 1;
+    private boolean optimizeNullsInJoinv2;
 
     public enum PartitioningPrecisionStrategy
     {
@@ -1807,6 +1808,17 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isOptimizeNullsInJoinv2()
+    {
+        return optimizeNullsInJoinv2;
+    }
+
+    @Config("optimize-nulls-in-join-v2")
+    public FeaturesConfig setOptimizeNullsInJoinv2(boolean optimizeNullsInJoinv2)
+    {
+        this.optimizeNullsInJoinv2 = optimizeNullsInJoinv2;
+        return this;
+    }
     public String getWarnOnNoTableLayoutFilter()
     {
         return warnOnNoTableLayoutFilter;

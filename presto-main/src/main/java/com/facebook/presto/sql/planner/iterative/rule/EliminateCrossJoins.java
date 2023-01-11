@@ -189,7 +189,7 @@ public class EliminateCrossJoins
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    ImmutableMap.of());
+                    ImmutableMap.of(), Optional.empty());
         }
 
         List<RowExpression> filters = graph.getFilters();

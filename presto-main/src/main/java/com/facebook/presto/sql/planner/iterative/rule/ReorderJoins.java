@@ -324,7 +324,7 @@ public class ReorderJoins
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    ImmutableMap.of()));
+                    ImmutableMap.of(), Optional.empty()));
         }
 
         private List<RowExpression> getJoinPredicates(Set<VariableReferenceExpression> leftVariables, Set<VariableReferenceExpression> rightVariables)

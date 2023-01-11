@@ -68,6 +68,6 @@ public class TransformCorrelatedLateralJoinToJoin
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
-                        ImmutableMap.of()))).orElseGet(Result::empty);
+                        ImmutableMap.of(), Optional.empty()))).orElseGet(Result::empty);
     }
 }

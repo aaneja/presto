@@ -260,7 +260,7 @@ public class TransformCorrelatedInPredicateToJoin
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
     }
 
     private AggregationNode.Aggregation countWithFilter(Expression condition)

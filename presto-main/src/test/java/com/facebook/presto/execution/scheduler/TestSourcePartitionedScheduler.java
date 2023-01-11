@@ -512,7 +512,7 @@ public class TestSourcePartitionedScheduler
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
-                        ImmutableMap.of()),
+                        ImmutableMap.of(), Optional.empty()),
                 ImmutableSet.of(variable),
                 SOURCE_DISTRIBUTION,
                 ImmutableList.of(TABLE_SCAN_NODE_ID),

@@ -377,7 +377,7 @@ public class HashGenerationOptimizer
                             leftHashVariable,
                             rightHashVariable,
                             node.getDistributionType(),
-                            node.getDynamicFilters()),
+                            node.getDynamicFilters(), Optional.empty()),
                     hashVariablesWithParentPreferences);
         }
 

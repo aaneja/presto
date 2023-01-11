@@ -131,7 +131,7 @@ public class RemoveUnsupportedDynamicFilters
                             node.getLeftHashVariable(),
                             node.getRightHashVariable(),
                             node.getDistributionType(),
-                            joinDynamicFilterResult.getDynamicFilters()),
+                            joinDynamicFilterResult.getDynamicFilters(), Optional.empty()),
                         ImmutableSet.copyOf(joinDynamicFilterResult.getConsumed()));
             }
             return new PlanWithConsumedDynamicFilters(node, ImmutableSet.copyOf(joinDynamicFilterResult.getConsumed()));

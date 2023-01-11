@@ -125,7 +125,7 @@ public class TransformDistinctInnerJoinToRightEarlyOutJoin
                 innerJoin.getLeftHashVariable(),
                 innerJoin.getRightHashVariable(),
                 innerJoin.getDistributionType(),
-                innerJoin.getDynamicFilters());
+                innerJoin.getDynamicFilters(), Optional.empty());
 
         AggregationNode newDistinctNode = new AggregationNode(
                 aggregationNode.getSourceLocation(),

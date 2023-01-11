@@ -458,7 +458,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -499,7 +499,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -532,7 +532,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -577,7 +577,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -623,7 +623,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -672,7 +672,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 
@@ -717,7 +717,7 @@ public class TestEffectivePredicateExtractor
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         RowExpression effectivePredicate = effectivePredicateExtractor.extract(node);
 

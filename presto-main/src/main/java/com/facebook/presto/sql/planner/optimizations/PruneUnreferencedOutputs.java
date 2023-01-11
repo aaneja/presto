@@ -258,7 +258,7 @@ public class PruneUnreferencedOutputs
                     node.getLeftHashVariable(),
                     node.getRightHashVariable(),
                     node.getDistributionType(),
-                    node.getDynamicFilters());
+                    node.getDynamicFilters(), Optional.empty());
         }
 
         @Override

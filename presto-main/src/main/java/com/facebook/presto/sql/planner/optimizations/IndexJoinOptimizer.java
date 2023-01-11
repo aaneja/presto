@@ -197,7 +197,7 @@ public class IndexJoinOptimizer
                         node.getLeftHashVariable(),
                         node.getRightHashVariable(),
                         node.getDistributionType(),
-                        node.getDynamicFilters());
+                        node.getDynamicFilters(), Optional.empty());
             }
             return node;
         }

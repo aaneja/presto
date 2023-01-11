@@ -165,7 +165,7 @@ public class TestGraphvizPrinter
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(JoinNode.DistributionType.REPLICATED),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
 
         String actual = printLogical(
                 ImmutableList.of(createTestPlanFragment(0, node)),

@@ -605,7 +605,7 @@ public class PredicatePushDown
                         node.getLeftHashVariable(),
                         node.getRightHashVariable(),
                         distributionType,
-                        dynamicFilters);
+                        dynamicFilters, Optional.empty());
             }
 
             if (!postJoinPredicate.equals(TRUE_CONSTANT)) {
@@ -1229,7 +1229,7 @@ public class PredicatePushDown
                             node.getLeftHashVariable(),
                             node.getRightHashVariable(),
                             node.getDistributionType(),
-                            node.getDynamicFilters());
+                            node.getDynamicFilters(), Optional.empty());
                 }
                 else {
                     return new JoinNode(
@@ -1244,7 +1244,7 @@ public class PredicatePushDown
                             node.getLeftHashVariable(),
                             node.getRightHashVariable(),
                             node.getDistributionType(),
-                            node.getDynamicFilters());
+                            node.getDynamicFilters(), Optional.empty());
                 }
             }
 
@@ -1264,7 +1264,7 @@ public class PredicatePushDown
                     node.getLeftHashVariable(),
                     node.getRightHashVariable(),
                     node.getDistributionType(),
-                    node.getDynamicFilters());
+                    node.getDynamicFilters(), Optional.empty());
         }
 
         private boolean canConvertOuterToInner(List<VariableReferenceExpression> innerVariablesForOuterJoin, RowExpression inheritedPredicate)

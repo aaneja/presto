@@ -35,6 +35,7 @@ import io.airlift.slice.Slices;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -138,7 +139,7 @@ public class RandomizeNullKeyInOuterJoin
                         joinNode.getLeftHashVariable(),
                         joinNode.getRightHashVariable(),
                         joinNode.getDistributionType(),
-                        joinNode.getDynamicFilters());
+                        joinNode.getDynamicFilters(), Optional.empty());
             }
 
             // Only do optimization for outer join and partitioned join
@@ -208,7 +209,7 @@ public class RandomizeNullKeyInOuterJoin
                     joinNode.getLeftHashVariable(),
                     joinNode.getRightHashVariable(),
                     joinNode.getDistributionType(),
-                    joinNode.getDynamicFilters());
+                    joinNode.getDynamicFilters(), Optional.empty());
         }
 
         private RowExpression randomizeJoinKey(RowExpression keyExpression, String prefix)

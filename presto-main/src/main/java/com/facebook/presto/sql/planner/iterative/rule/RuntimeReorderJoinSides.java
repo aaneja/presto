@@ -175,7 +175,7 @@ public class RuntimeReorderJoinSides
                 leftHashVariable,
                 swapped.getRightHashVariable(),
                 swapped.getDistributionType(),
-                swapped.getDynamicFilters());
+                swapped.getDynamicFilters(), Optional.empty());
 
         log.debug(format("Probe size: %.2f is smaller than Build size: %.2f => invoke runtime join swapping on JoinNode ID: %s.", leftOutputSizeInBytes, rightOutputSizeInBytes, newJoinNode.getId()));
         return Result.ofPlanNode(newJoinNode);

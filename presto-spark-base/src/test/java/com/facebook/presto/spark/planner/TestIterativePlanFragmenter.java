@@ -366,7 +366,7 @@ public class TestIterativePlanFragmenter
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(distributionType),
-                ImmutableMap.of());
+                ImmutableMap.of(), Optional.empty());
     }
 
     private PlanNode translateExpression(PlanNode planNode, TypeProvider typeProvider)

@@ -14,12 +14,15 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.Session;
+import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.expressions.LogicalRowExpressions;
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.PlanNode;
+import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
@@ -52,9 +55,11 @@ public class AddNotNullFiltersOnJoins
 
     private static Result newJoinNodeResult(Context context, JoinNode joinNode, PlanNode left, PlanNode right)
     {
-        return Result.ofPlanNode(new JoinNode(
+        final PlanNodeId newJoinId = context.getIdAllocator().getNextId();
+        final JoinNode transformedJoinNode = new JoinNode(
                 joinNode.getSourceLocation(),
-                context.getIdAllocator().getNextId(),
+                newJoinId,
+                Optional.empty(),
                 joinNode.getType(),
                 left,
                 right,
@@ -64,7 +69,10 @@ public class AddNotNullFiltersOnJoins
                 joinNode.getLeftHashVariable(),
                 joinNode.getRightHashVariable(),
                 joinNode.getDistributionType(),
-                joinNode.getDynamicFilters()));
+                joinNode.getDynamicFilters(),
+                Optional.of(true)
+        );
+        return Result.ofPlanNode(transformedJoinNode);
     }
 
     private RowExpression buildNotNullRowExpression(List<VariableReferenceExpression> expressions)
@@ -84,8 +92,18 @@ public class AddNotNullFiltersOnJoins
     }
 
     @Override
+    public boolean isEnabled(Session session)
+    {
+        return SystemSessionProperties.isOptimizeNullsInJoinv2(session);
+    }
+
+    @Override
     public Result apply(JoinNode joinNode, Captures captures, Context context)
     {
+        if (joinNode.notNullPredicatesGenerated().isPresent() && joinNode.notNullPredicatesGenerated().get()) {
+            return Result.empty();
+        }
+
         final List<JoinNode.EquiJoinClause> criteria = joinNode.getCriteria();
         Optional<RowExpression> filters = joinNode.getFilter();
 

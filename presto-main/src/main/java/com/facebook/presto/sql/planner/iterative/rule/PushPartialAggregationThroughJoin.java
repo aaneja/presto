@@ -31,6 +31,7 @@ import com.google.common.collect.Streams;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -194,7 +195,7 @@ public class PushPartialAggregationThroughJoin
                 child.getLeftHashVariable(),
                 child.getRightHashVariable(),
                 child.getDistributionType(),
-                child.getDynamicFilters());
+                child.getDynamicFilters(), Optional.empty());
         return restrictOutputs(context.getIdAllocator(), joinNode, ImmutableSet.copyOf(aggregation.getOutputVariables()), false).orElse(joinNode);
     }
 }
