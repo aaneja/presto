@@ -131,6 +131,7 @@ import com.facebook.presto.sql.planner.iterative.rule.TransformUncorrelatedLater
 import com.facebook.presto.sql.planner.iterative.rule.TranslateExpressions;
 import com.facebook.presto.sql.planner.optimizations.AddExchanges;
 import com.facebook.presto.sql.planner.optimizations.AddLocalExchanges;
+import com.facebook.presto.sql.planner.optimizations.AddNotNullFiltersToJoinNode;
 import com.facebook.presto.sql.planner.optimizations.ApplyConnectorOptimization;
 import com.facebook.presto.sql.planner.optimizations.CheckSubqueryNodesAreRewritten;
 import com.facebook.presto.sql.planner.optimizations.HashGenerationOptimizer;
@@ -483,6 +484,7 @@ public class PlanOptimizers
                                 new RemoveRedundantAggregateDistinct(),
                                 new RemoveRedundantIdentityProjections(),
                                 new PushAggregationThroughOuterJoin(metadata.getFunctionAndTypeManager()))),
+                new AddNotNullFiltersToJoinNode(metadata),
                 inlineProjections,
                 simplifyRowExpressionOptimizer, // Re-run the SimplifyExpressions to simplify any recomposed expressions from other optimizations
                 projectionPushDown,

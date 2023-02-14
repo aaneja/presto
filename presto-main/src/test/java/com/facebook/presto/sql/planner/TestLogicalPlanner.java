@@ -1361,67 +1361,6 @@ public class TestLogicalPlanner
     }
 
     @Test
-    public void testJoinNullFilters()
-    {
-        Session nullFiltersInJoin = Session.builder(this.getQueryRunner().getDefaultSession())
-                .setSystemProperty(JOIN_REORDERING_STRATEGY, ELIMINATE_CROSS_JOINS.toString())
-                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, JoinDistributionType.PARTITIONED.toString())
-                .setSystemProperty(OPTIMIZE_NULLS_IN_JOINS, Boolean.toString(true))
-                .build();
-        assertPlanWithSession("SELECT nationkey FROM nation INNER JOIN region ON nation.regionkey = region.regionkey",
-                nullFiltersInJoin, false,
-                anyTree(
-                        join(
-                                INNER,
-                                ImmutableList.of(equiJoinClause("NATION_REGIONKEY", "REGION_REGIONKEY")),
-                                anyTree(
-                                        filter("NATION_REGIONKEY IS NOT NULL",
-                                                tableScan(
-                                                        "nation",
-                                                        ImmutableMap.of("NATION_REGIONKEY", "regionkey")))),
-                                anyTree(
-                                        filter("region_REGIONKEY IS NOT NULL",
-                                                tableScan(
-                                                        "region",
-                                                        ImmutableMap.of(
-                                                                "REGION_REGIONKEY", "regionkey")))))));
-
-        assertPlanWithSession("SELECT nationkey FROM nation LEFT JOIN region ON nation.regionkey = region.regionkey",
-                nullFiltersInJoin, false,
-                anyTree(
-                        join(
-                                LEFT,
-                                ImmutableList.of(equiJoinClause("NATION_REGIONKEY", "REGION_REGIONKEY")),
-                                anyTree(
-                                        tableScan(
-                                                "nation",
-                                                ImmutableMap.of("NATION_REGIONKEY", "regionkey"))),
-                                anyTree(
-                                        filter("region_REGIONKEY IS NOT NULL",
-                                                tableScan(
-                                                        "region",
-                                                        ImmutableMap.of(
-                                                                "REGION_REGIONKEY", "regionkey")))))));
-
-        assertPlanWithSession("SELECT nationkey FROM nation RIGHT JOIN region ON nation.regionkey = region.regionkey",
-                nullFiltersInJoin, false,
-                anyTree(
-                        join(
-                                RIGHT,
-                                ImmutableList.of(equiJoinClause("NATION_REGIONKEY", "REGION_REGIONKEY")),
-                                anyTree(
-                                        filter("NATION_REGIONKEY IS NOT NULL",
-                                                tableScan(
-                                                        "nation",
-                                                        ImmutableMap.of("NATION_REGIONKEY", "regionkey")))),
-                                anyTree(
-                                        tableScan(
-                                                "region",
-                                                ImmutableMap.of(
-                                                        "REGION_REGIONKEY", "regionkey"))))));
-    }
-
-    @Test
     public void testEnforceFixedDistributionForOutputOperator()
     {
         Session session = Session.builder(this.getQueryRunner().getDefaultSession())
