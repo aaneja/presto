@@ -144,6 +144,7 @@ import com.facebook.presto.sql.planner.optimizations.MetadataDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataQueryOptimizer;
 import com.facebook.presto.sql.planner.optimizations.OptimizeMixedDistinctAggregations;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.planner.optimizations.PreLoadStats;
 import com.facebook.presto.sql.planner.optimizations.PredicatePushDown;
 import com.facebook.presto.sql.planner.optimizations.PruneUnreferencedOutputs;
 import com.facebook.presto.sql.planner.optimizations.PushdownSubfields;
@@ -587,6 +588,10 @@ public class PlanOptimizers
         // We do a single pass, and assign `statsEquivalentPlanNode` to each node.
         // After this step, nodes with same `statsEquivalentPlanNode` will share same history based statistics.
         builder.add(new StatsRecordingPlanOptimizer(optimizerStats, new HistoricalStatisticsEquivalentPlanMarkingOptimizer(statsCalculator)));
+
+        //Preload the stats just before ReorderJoins where getTableStatistics is called for the first time
+        //This is a HACK for the prototype, ideally we would do this as a SimpleStatsRule
+        builder.add(new PreLoadStats(splitManager, metadata));
 
         builder.add(new IterativeOptimizer(
                 // Because ReorderJoins runs only once,
