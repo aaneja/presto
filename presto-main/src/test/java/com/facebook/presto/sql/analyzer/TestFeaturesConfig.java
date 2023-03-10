@@ -38,6 +38,8 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartiti
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.TOP_DOWN;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.USE_FUNCTION_METADATA;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILLER_SPILL_PATH;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILL_ENABLED;
@@ -177,6 +179,7 @@ public class TestFeaturesConfig
                 .setOptimizeCommonSubExpressions(true)
                 .setPreferDistributedUnion(true)
                 .setOptimizeNullsInJoin(false)
+                .setJoinsNotNullInferenceStrategy(MAP_TO_STANDARD_OPERATOR)
                 .setSkipRedundantSort(true)
                 .setWarnOnNoTableLayoutFilter("")
                 .setInlineSqlFunctions(true)
@@ -347,6 +350,7 @@ public class TestFeaturesConfig
                 .put("optimize-common-sub-expressions", "false")
                 .put("prefer-distributed-union", "false")
                 .put("optimize-nulls-in-join", "true")
+                .put("optimizer.joins-not-null-inference-strategy", "USE_FUNCTION_METADATA")
                 .put("warn-on-no-table-layout-filter", "ry@nlikestheyankees,ds")
                 .put("inline-sql-functions", "false")
                 .put("check-access-control-on-utilized-columns-only", "true")
@@ -514,6 +518,7 @@ public class TestFeaturesConfig
                 .setOptimizeCommonSubExpressions(false)
                 .setPreferDistributedUnion(false)
                 .setOptimizeNullsInJoin(true)
+                .setJoinsNotNullInferenceStrategy(USE_FUNCTION_METADATA)
                 .setSkipRedundantSort(false)
                 .setWarnOnNoTableLayoutFilter("ry@nlikestheyankees,ds")
                 .setInlineSqlFunctions(false)
