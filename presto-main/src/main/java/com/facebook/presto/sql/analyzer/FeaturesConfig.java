@@ -16,9 +16,11 @@ package com.facebook.presto.sql.analyzer;
 import com.facebook.airlift.configuration.Config;
 import com.facebook.airlift.configuration.ConfigDescription;
 import com.facebook.airlift.configuration.DefunctConfig;
+import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.operator.aggregation.arrayagg.ArrayAggGroupImplementation;
 import com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation;
 import com.facebook.presto.operator.aggregation.multimapagg.MultimapAggGroupImplementation;
+import com.facebook.presto.spi.function.FunctionMetadata;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -37,6 +39,7 @@ import java.nio.file.Paths;
 import java.util.List;
 
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.LEGACY;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.TaskSpillingStrategy.ORDER_BY_CREATE_TIME;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -248,6 +251,8 @@ public class FeaturesConfig
     private boolean prefilterForGroupbyLimit;
     private boolean isOptimizeJoinProbeWithEmptyBuildRuntime;
     private boolean useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins = true;
+    private NotNullInferenceStrategy notNullInferenceStrategy = MAP_TO_STANDARD_OPERATOR;
+
     public enum PartitioningPrecisionStrategy
     {
         // Let Presto decide when to repartition
@@ -329,6 +334,27 @@ public class FeaturesConfig
         FILTER_WITH_IF, // Rewrites AGG(IF(condition, expr)) to AGG(IF(condition, expr)) FILTER (WHERE condition).
         UNWRAP_IF_SAFE, // Rewrites AGG(IF(condition, expr)) to AGG(expr) FILTER (WHERE condition) if it is safe to do so.
         UNWRAP_IF // Rewrites AGG(IF(condition, expr)) to AGG(expr) FILTER (WHERE condition).
+    }
+
+    /**
+     * Strategy used in {@link com.facebook.presto.sql.planner.iterative.rule.AddNotNullFiltersToJoinNode.ExtractInferredNotNullVariablesVisitor}
+     * to determine if a function can operate on NULL inputs
+     */
+    public enum NotNullInferenceStrategy
+    {
+        OFF,
+
+        EQUIJOIN_ONLY,
+
+        /**
+         * Try to map this function to a standard operator. If this mapping is successful, use {@link OperatorType#isCalledOnNullInput()}
+         * to check if this function can operate on NULL inputs.
+         */
+        MAP_TO_STANDARD_OPERATOR,
+        /**
+         * Use the {@link FunctionMetadata#isCalledOnNullInput()} value to check if this function can operate on NULL inputs
+         */
+        USE_FUNCTION_METADATA
     }
 
     public double getCpuCostWeight()
@@ -2135,6 +2161,19 @@ public class FeaturesConfig
     {
         this.aggregationIfToFilterRewriteStrategy = strategy;
         return this;
+    }
+
+    @Config("optimizer.joins-not-null-inference-strategy")
+    @ConfigDescription("Set the strategy used NOT NULL filter inference on Join Nodes")
+    public FeaturesConfig setJoinsNotNullInferenceStrategy(NotNullInferenceStrategy strategy)
+    {
+        this.notNullInferenceStrategy = strategy;
+        return this;
+    }
+
+    public NotNullInferenceStrategy getJoinsNotNullInferenceStrategy()
+    {
+        return notNullInferenceStrategy;
     }
 
     public String getAnalyzerType()
