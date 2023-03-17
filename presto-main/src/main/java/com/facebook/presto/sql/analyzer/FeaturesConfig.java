@@ -39,7 +39,7 @@ import java.nio.file.Paths;
 import java.util.List;
 
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.LEGACY;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.TaskSpillingStrategy.ORDER_BY_CREATE_TIME;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -251,7 +251,7 @@ public class FeaturesConfig
     private boolean prefilterForGroupbyLimit;
     private boolean isOptimizeJoinProbeWithEmptyBuildRuntime;
     private boolean useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins = true;
-    private NotNullInferenceStrategy notNullInferenceStrategy = MAP_TO_STANDARD_OPERATOR;
+    private JoinNotNullInferenceStrategy joinNotNullInferenceStrategy = MAP_TO_STANDARD_OPERATOR;
 
     public enum PartitioningPrecisionStrategy
     {
@@ -340,7 +340,7 @@ public class FeaturesConfig
      * Strategy used in {@link com.facebook.presto.sql.planner.iterative.rule.AddNotNullFiltersToJoinNode.ExtractInferredNotNullVariablesVisitor}
      * to determine if a function can operate on NULL inputs
      */
-    public enum NotNullInferenceStrategy
+    public enum JoinNotNullInferenceStrategy
     {
         OFF,
 
@@ -2165,15 +2165,15 @@ public class FeaturesConfig
 
     @Config("optimizer.joins-not-null-inference-strategy")
     @ConfigDescription("Set the strategy used NOT NULL filter inference on Join Nodes")
-    public FeaturesConfig setJoinsNotNullInferenceStrategy(NotNullInferenceStrategy strategy)
+    public FeaturesConfig setJoinsNotNullInferenceStrategy(JoinNotNullInferenceStrategy strategy)
     {
-        this.notNullInferenceStrategy = strategy;
+        this.joinNotNullInferenceStrategy = strategy;
         return this;
     }
 
-    public NotNullInferenceStrategy getJoinsNotNullInferenceStrategy()
+    public JoinNotNullInferenceStrategy getJoinsNotNullInferenceStrategy()
     {
-        return notNullInferenceStrategy;
+        return joinNotNullInferenceStrategy;
     }
 
     public String getAnalyzerType()

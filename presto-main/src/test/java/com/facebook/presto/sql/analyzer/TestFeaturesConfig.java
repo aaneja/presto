@@ -37,8 +37,8 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartiti
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.TOP_DOWN;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.USE_FUNCTION_METADATA;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.USE_FUNCTION_METADATA;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILLER_SPILL_PATH;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILL_ENABLED;

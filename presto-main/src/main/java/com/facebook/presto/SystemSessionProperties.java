@@ -31,7 +31,7 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationIfToFilterRewr
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
-import com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartitioningPrecisionStrategy;
@@ -1469,15 +1469,15 @@ public final class SystemSessionProperties
                         JOINS_NOT_NULL_INFERENCE_STRATEGY,
                         format("Set the strategy used NOT NULL filter inference on Join Nodes. This strategy is used when '%s' is enabled. Options are: %s",
                                 OPTIMIZE_NULLS_IN_JOINS,
-                                Stream.of(NotNullInferenceStrategy.values())
-                                        .map(NotNullInferenceStrategy::name)
+                                Stream.of(JoinNotNullInferenceStrategy.values())
+                                        .map(JoinNotNullInferenceStrategy::name)
                                         .collect(joining(","))),
                         VARCHAR,
-                        NotNullInferenceStrategy.class,
+                        JoinNotNullInferenceStrategy.class,
                         featuresConfig.getJoinsNotNullInferenceStrategy(),
                         false,
-                        value -> NotNullInferenceStrategy.valueOf(((String) value).toUpperCase()),
-                        NotNullInferenceStrategy::name));
+                        value -> JoinNotNullInferenceStrategy.valueOf(((String) value).toUpperCase()),
+                        JoinNotNullInferenceStrategy::name));
     }
 
     public static boolean isEmptyJoinOptimization(Session session)
@@ -2200,9 +2200,9 @@ public final class SystemSessionProperties
         return session.getSystemProperty(OPTIMIZE_NULLS_IN_JOINS, Boolean.class);
     }
 
-    public static NotNullInferenceStrategy getNotNullInferenceStrategy(Session session)
+    public static JoinNotNullInferenceStrategy getNotNullInferenceStrategy(Session session)
     {
-        return session.getSystemProperty(JOINS_NOT_NULL_INFERENCE_STRATEGY, NotNullInferenceStrategy.class);
+        return session.getSystemProperty(JOINS_NOT_NULL_INFERENCE_STRATEGY, JoinNotNullInferenceStrategy.class);
     }
 
     public static Optional<DataSize> getTargetResultSize(Session session)

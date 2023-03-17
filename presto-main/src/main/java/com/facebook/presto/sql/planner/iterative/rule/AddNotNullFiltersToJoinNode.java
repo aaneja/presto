@@ -42,7 +42,7 @@ import static com.facebook.presto.SystemSessionProperties.getNotNullInferenceStr
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.AND;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.IS_NULL;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.OFF;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.OFF;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
 import static com.google.common.collect.Sets.intersection;

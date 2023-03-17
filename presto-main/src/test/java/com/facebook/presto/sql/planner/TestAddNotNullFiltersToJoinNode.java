@@ -41,8 +41,8 @@ import static com.facebook.presto.SystemSessionProperties.JOINS_NOT_NULL_INFEREN
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_NULLS_IN_JOINS;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.metadata.FunctionAndTypeManager.createTestFunctionAndTypeManager;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.NotNullInferenceStrategy.USE_FUNCTION_METADATA;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.USE_FUNCTION_METADATA;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJoinClause;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.filter;
