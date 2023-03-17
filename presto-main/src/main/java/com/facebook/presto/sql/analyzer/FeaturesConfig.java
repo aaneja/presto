@@ -338,21 +338,32 @@ public class FeaturesConfig
 
     /**
      * Strategy used in {@link com.facebook.presto.sql.planner.iterative.rule.AddNotNullFiltersToJoinNode.ExtractInferredNotNullVariablesVisitor}
-     * to determine if a function can operate on NULL inputs
+     * to infer NOT NULL predicates
      */
     public enum JoinNotNullInferenceStrategy
     {
+        /**
+         * No NOT NULL predicates are inferred
+         */
         OFF,
 
-        EQUIJOIN_ONLY,
+        /**
+         * Use only the equi-join condition for inferring NOT NULL predicates.
+         */
+        EQUI_JOIN_ONLY,
 
         /**
-         * Try to map this function to a standard operator. If this mapping is successful, use {@link OperatorType#isCalledOnNullInput()}
+         * Use both, the equi-join condition *and* the join filter for inferring NOT NULL predicates.
+         * For the join filter, try to map functions to a standard operator in {@link OperatorType}.
+         * If this mapping is successful, use {@link OperatorType#isCalledOnNullInput()}
          * to check if this function can operate on NULL inputs.
          */
         MAP_TO_STANDARD_OPERATOR,
+
         /**
-         * Use the {@link FunctionMetadata#isCalledOnNullInput()} value to check if this function can operate on NULL inputs
+         * Use both, the equi-join condition *and* the join filter for inferring NOT NULL predicates.
+         * For the join filter, use the function's  {@link FunctionMetadata#isCalledOnNullInput()} value
+         * to check if this function can operate on NULL inputs
          */
         USE_FUNCTION_METADATA
     }

@@ -40,8 +40,10 @@ import java.util.Optional;
 
 import static com.facebook.presto.SystemSessionProperties.getNotNullInferenceStrategy;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTANT;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.AND;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.IS_NULL;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.EQUI_JOIN_ONLY;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinNotNullInferenceStrategy.OFF;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
@@ -172,10 +174,15 @@ public class AddNotNullFiltersToJoinNode
     private Collection<VariableReferenceExpression> extractNotNullVariables(List<JoinNode.EquiJoinClause> joinCriteria, RowExpression joinFilter,
             List<VariableReferenceExpression> candidates, Session session)
     {
-        RowExpression combinedFilter = joinFilter;
+        RowExpression combinedFilter = TRUE_CONSTANT;
+
         for (JoinNode.EquiJoinClause criteria : joinCriteria) {
             combinedFilter = and(combinedFilter, criteria.getLeft());
             combinedFilter = and(combinedFilter, criteria.getRight());
+        }
+
+        if (getNotNullInferenceStrategy(session) != EQUI_JOIN_ONLY) {
+            combinedFilter = and(combinedFilter, joinFilter);
         }
 
         return intersection(ImmutableSet.copyOf(candidates), inferNotNullVariables(combinedFilter, session));
@@ -208,6 +215,7 @@ public class AddNotNullFiltersToJoinNode
             final FunctionMetadata functionMetadata = functionAndTypeManager.getFunctionMetadata(functionHandle);
 
             switch (getNotNullInferenceStrategy(session)) {
+                case EQUI_JOIN_ONLY:
                 case MAP_TO_STANDARD_OPERATOR:
                     final Optional<OperatorType> operatorType = functionMetadata.getOperatorType();
                     if (!operatorType.isPresent() || operatorType.get().isCalledOnNullInput()) {
@@ -227,7 +235,7 @@ public class AddNotNullFiltersToJoinNode
             }
 
             // Since this function *cannot* operate on NULL arguments
-            // We can proceed with extracting candidates for NOT NULL inference on it's arguments
+            // We can infer NOT NULL candidates from its arguments
             return super.visitCall(call, context);
         }
 
