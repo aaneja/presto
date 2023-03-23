@@ -1087,8 +1087,8 @@ public final class SystemSessionProperties
                         WarningHandlingLevel::name),
                 booleanProperty(
                         OPTIMIZE_NULLS_IN_JOINS,
-                        "Filter nulls from inner side of join",
-                        featuresConfig.isOptimizeNullsInJoin(),
+                        "(DEPRECATED) Filter nulls from inner side of join. If this is set, joins_not_null_inference_strategy = 'MAP_TO_STANDARD_OPERATOR' is assumed",
+                        null,
                         false),
                 booleanProperty(
                         OPTIMIZE_PAYLOAD_JOINS,
@@ -2214,17 +2214,16 @@ public final class SystemSessionProperties
         return session.getSystemProperty(WARNING_HANDLING, WarningHandlingLevel.class);
     }
 
-    public static boolean isOptimizeNullsInJoin(Session session)
-    {
-        return session.getSystemProperty(OPTIMIZE_NULLS_IN_JOINS, Boolean.class);
-    }
-
     public static boolean isOptimizePayloadJoins(Session session)
     {
         return session.getSystemProperty(OPTIMIZE_PAYLOAD_JOINS, Boolean.class);
     }
+
     public static JoinNotNullInferenceStrategy getNotNullInferenceStrategy(Session session)
     {
+        if (session.getSystemProperty(OPTIMIZE_NULLS_IN_JOINS, Boolean.class)) {
+            return JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+        }
         return session.getSystemProperty(JOINS_NOT_NULL_INFERENCE_STRATEGY, JoinNotNullInferenceStrategy.class);
     }
 
