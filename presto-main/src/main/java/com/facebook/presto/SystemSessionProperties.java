@@ -2277,7 +2277,7 @@ public final class SystemSessionProperties
     public static JoinNotNullInferenceStrategy getNotNullInferenceStrategy(Session session)
     {
         if (session.getSystemProperty(OPTIMIZE_NULLS_IN_JOINS, Boolean.class)) {
-            return JoinNotNullInferenceStrategy.MAP_TO_STANDARD_OPERATOR;
+            return JoinNotNullInferenceStrategy.INFER_FROM_STANDARD_OPERATORS;
         }
         return session.getSystemProperty(JOINS_NOT_NULL_INFERENCE_STRATEGY, JoinNotNullInferenceStrategy.class);
     }
