@@ -69,11 +69,11 @@ public final class HiveQueryRunner
     }
 
     public static final String HIVE_CATALOG = "hive";
-    public static final String HIVE_BUCKETED_CATALOG = "hive_bucketed";
-    public static final String TPCH_SCHEMA = "tpch";
-    public static final String TPCH_BUCKETED_SCHEMA = "tpch_bucketed";
-    public static final String TPCDS_SCHEMA = "tpcds";
-    public static final String TPCDS_BUCKETED_SCHEMA = "tpcds_bucketed";
+    public static final String HIVE_BUCKETED_CATALOG = "hive";
+    public static final String TPCH_SCHEMA = "__tpch";
+    public static final String TPCH_BUCKETED_SCHEMA = "__tpch_bucketed";
+    public static final String TPCDS_SCHEMA = "__tpcds";
+    public static final String TPCDS_BUCKETED_SCHEMA = "__tpcds_bucketed";
     public static final MetastoreContext METASTORE_CONTEXT = new MetastoreContext("test_user", "test_queryId", Optional.empty(), Optional.empty(), Optional.empty(), false, HiveColumnConverterProvider.DEFAULT_COLUMN_CONVERTER_PROVIDER);
     private static final String TEMPORARY_TABLE_SCHEMA = "__temporary_tables__";
     private static final DateTimeZone TIME_ZONE = DateTimeZone.forID("America/Bahia_Banderas");
@@ -202,12 +202,12 @@ public final class HiveQueryRunner
             queryRunner.installPlugin(new TpchPlugin());
             queryRunner.installPlugin(new TpcdsPlugin());
             queryRunner.installPlugin(new TestingHiveEventListenerPlugin());
-            queryRunner.createCatalog("tpch", "tpch");
-            queryRunner.createCatalog("tpcds", "tpcds");
+            //queryRunner.createCatalog("tpch", "tpch");
+            //queryRunner.createCatalog("tpcds", "tpcds");
             Map<String, String> tpchProperties = ImmutableMap.<String, String>builder()
                     .put("tpch.column-naming", "standard")
                     .build();
-            queryRunner.createCatalog("tpchstandard", "tpch", tpchProperties);
+            //queryRunner.createCatalog("tpchstandard", "tpch", tpchProperties);
 
             ExtendedHiveMetastore metastore;
             metastore = externalMetastore.orElse(getFileHiveMetastore(queryRunner));
@@ -216,7 +216,7 @@ public final class HiveQueryRunner
 
             if (addJmxPlugin) {
                 queryRunner.installPlugin(new JmxPlugin());
-                queryRunner.createCatalog("jmx", "jmx");
+                //queryRunner.createCatalog("jmx", "jmx");
             }
 
             Map<String, String> hiveProperties = ImmutableMap.<String, String>builder()
@@ -242,18 +242,18 @@ public final class HiveQueryRunner
                     .put("hive.max-initial-split-size", "10kB") // so that each bucket has multiple splits
                     .put("hive.max-split-size", "10kB") // so that each bucket has multiple splits
                     .build();
-            queryRunner.createCatalog(HIVE_CATALOG, HIVE_CATALOG, hiveProperties);
-            queryRunner.createCatalog(HIVE_BUCKETED_CATALOG, HIVE_CATALOG, hiveBucketedProperties);
+            //queryRunner.createCatalog(HIVE_CATALOG, HIVE_CATALOG, hiveProperties);
+            //queryRunner.createCatalog(HIVE_BUCKETED_CATALOG, HIVE_CATALOG, hiveBucketedProperties);
 
             List<String> tpchTableNames = getTpchTableNames(tpchTables);
             if (!metastore.getDatabase(METASTORE_CONTEXT, TPCH_SCHEMA).isPresent()) {
                 metastore.createDatabase(METASTORE_CONTEXT, createDatabaseMetastoreObject(TPCH_SCHEMA));
-                copyTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(Optional.empty()), tpchTableNames, true, false);
+                // copyTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(Optional.empty()), tpchTableNames, true, false);
             }
 
             if (!metastore.getDatabase(METASTORE_CONTEXT, TPCH_BUCKETED_SCHEMA).isPresent()) {
                 metastore.createDatabase(METASTORE_CONTEXT, createDatabaseMetastoreObject(TPCH_BUCKETED_SCHEMA));
-                copyTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createBucketedSession(Optional.empty()), tpchTableNames, true, true);
+                // copyTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createBucketedSession(Optional.empty()), tpchTableNames, true, true);
             }
 
             if (!metastore.getDatabase(METASTORE_CONTEXT, TEMPORARY_TABLE_SCHEMA).isPresent()) {
@@ -262,12 +262,12 @@ public final class HiveQueryRunner
 
             if (!metastore.getDatabase(METASTORE_CONTEXT, TPCDS_SCHEMA).isPresent()) {
                 metastore.createDatabase(METASTORE_CONTEXT, createDatabaseMetastoreObject(TPCDS_SCHEMA));
-                copyTables(queryRunner, "tpcds", TINY_SCHEMA_NAME, createSession(Optional.empty(), TPCDS_SCHEMA), tpcdsTableNames, true, false);
+                // copyTables(queryRunner, "tpcds", TINY_SCHEMA_NAME, createSession(Optional.empty(), TPCDS_SCHEMA), tpcdsTableNames, true, false);
             }
 
             if (!metastore.getDatabase(METASTORE_CONTEXT, TPCDS_BUCKETED_SCHEMA).isPresent()) {
                 metastore.createDatabase(METASTORE_CONTEXT, createDatabaseMetastoreObject(TPCDS_BUCKETED_SCHEMA));
-                copyTables(queryRunner, "tpcds", TINY_SCHEMA_NAME, createBucketedSession(Optional.empty(), TPCDS_BUCKETED_SCHEMA), tpcdsTableNames, true, true);
+                // copyTables(queryRunner, "tpcds", TINY_SCHEMA_NAME, createBucketedSession(Optional.empty(), TPCDS_BUCKETED_SCHEMA), tpcdsTableNames, true, true);
             }
 
             return queryRunner;

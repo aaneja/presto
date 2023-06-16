@@ -38,6 +38,7 @@ import org.intellij.lang.annotations.Language;
 
 import java.io.Closeable;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -133,6 +134,16 @@ public abstract class AbstractTestingPrestoClient<T>
 
     private static ClientSession toClientSession(Session session, URI server, Duration clientRequestTimeout)
     {
+        // System.getProperty("SERVER_URI","")
+        try {
+            // server = new URI("https://small-0-282-14312ef-b302j.oss-prestodb.cp.ahana.cloud/");
+            server = new URI("https://small-0-283-9982463-b7n.oss-prestodb.cp.ahana.cloud/");
+            // server = new URI("http://localhost:8086/");
+        }
+        catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+
         ImmutableMap.Builder<String, String> properties = ImmutableMap.builder();
         properties.putAll(session.getSystemProperties());
         for (Entry<String, Map<String, String>> connectorProperties : session.getUnprocessedCatalogProperties().entrySet()) {
@@ -140,6 +151,8 @@ public abstract class AbstractTestingPrestoClient<T>
                 properties.put(connectorProperties.getKey() + "." + entry.getKey(), entry.getValue());
             }
         }
+        properties.put("hive.pushdown_filter_enabled", "true");
+        properties.put("hive.parquet_pushdown_filter_enabled", "true");
 
         ImmutableMap.Builder<String, String> resourceEstimates = ImmutableMap.builder();
         ResourceEstimates estimates = session.getResourceEstimates();
