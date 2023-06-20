@@ -284,6 +284,7 @@ public final class SystemSessionProperties
     public static final String NATIVE_EXECUTION_EXECUTABLE_PATH = "native_execution_executable_path";
     public static final String NATIVE_EXECUTION_PROGRAM_ARGUMENTS = "native_execution_program_arguments";
     public static final String NATIVE_EXECUTION_PROCESS_REUSE_ENABLED = "native_execution_process_reuse_enabled";
+    public static final String ENABLE_OPTIMIZER_TRACE = "enable_optimizer_trace";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1591,6 +1592,11 @@ public final class SystemSessionProperties
                         REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN,
                         "Rewrite left join with is null check to semi join",
                         featuresConfig.isLeftJoinNullFilterToSemiJoin(),
+                        false),
+                booleanProperty(
+                        ENABLE_OPTIMIZER_TRACE,
+                        "Enable optimizer tracing",
+                        featuresConfig.isEnableOptimizerTrace(),
                         false));
     }
 
@@ -2673,5 +2679,10 @@ public final class SystemSessionProperties
     public static boolean isRewriteLeftJoinNullFilterToSemiJoinEnabled(Session session)
     {
         return session.getSystemProperty(REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN, Boolean.class);
+    }
+
+    public static boolean isEnableOptimizerTrace(Session session)
+    {
+        return session.getSystemProperty(ENABLE_OPTIMIZER_TRACE, Boolean.class);
     }
 }
