@@ -371,10 +371,7 @@ public class ReorderJoins
                     .filter(JoinEnumerator::isJoinEqualityCondition)
                     .map(predicate -> toEquiJoinClause((CallExpression) predicate, leftVariables, context.getVariableAllocator()))
                     .collect(toImmutableList());
-            if (joinConditions.isEmpty() && !OptTrace.joinConstraintsPresent(context.getOptTrace())) {
-                OptTrace.msg(context.getOptTrace(), "No join conditions and no join constraints. Join cost is infinite.", true);
-                return INFINITE_COST_RESULT;
-            }
+
             List<RowExpression> joinFilters = joinPredicates.stream()
                     .filter(predicate -> !isJoinEqualityCondition(predicate))
                     .collect(toImmutableList());
@@ -564,24 +561,24 @@ public class ReorderJoins
         {
             checkArgument(joinNode.getType() == INNER, "unexpected join node type: %s", joinNode.getType());
 
-            if (joinNode.isCrossJoin()) {
-                boolean joinOk = false;
-
-                if (OptTrace.joinConstraintsPresent(context.getOptTrace())) {
-                    if (OptTrace.satisfiesAnyJoinConstraint(context.getOptTrace(), joinNode, true)) {
-                        joinOk = true;
-                    }
-                    else if (OptTrace.satisfiesAnyJoinConstraint(context.getOptTrace(), joinNode.flipChildren(), true)) {
-                        joinOk = true;
-                    }
-                }
-
-                if (!joinOk) {
-                    OptTrace.msg(context.getOptTrace(), "No join conditions or matching constraint. Join cost is infinite.", true);
-                    List<JoinEnumerationResult> result = ImmutableList.of(INFINITE_COST_RESULT);
-                    return result;
-                }
-            }
+            // if (joinNode.isCrossJoin()) {
+            //     boolean joinOk = false;
+            //
+            //     if (OptTrace.joinConstraintsPresent(context.getOptTrace())) {
+            //         if (OptTrace.satisfiesAnyJoinConstraint(context.getOptTrace(), joinNode, true)) {
+            //             joinOk = true;
+            //         }
+            //         else if (OptTrace.satisfiesAnyJoinConstraint(context.getOptTrace(), joinNode.flipChildren(), true)) {
+            //             joinOk = true;
+            //         }
+            //     }
+            //
+            //     if (!joinOk) {
+            //         OptTrace.msg(context.getOptTrace(), "No join conditions or matching constraint. Join cost is infinite.", true);
+            //         List<JoinEnumerationResult> result = ImmutableList.of(INFINITE_COST_RESULT);
+            //         return result;
+            //     }
+            // }
 
             if (joinNode.isCrossJoin()) {
                 return getPossibleJoinNodes(joinNode, REPLICATED);
