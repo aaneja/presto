@@ -268,9 +268,7 @@ public class ReorderJoins
                     .filter(JoinEnumerator::isJoinEqualityCondition)
                     .map(predicate -> toEquiJoinClause((CallExpression) predicate, leftVariables, context.getVariableAllocator()))
                     .collect(toImmutableList());
-            if (joinConditions.isEmpty() && !calculateCrossJoinCost(session)) {
-                return INFINITE_COST_RESULT;
-            }
+
             List<RowExpression> joinFilters = joinPredicates.stream()
                     .filter(predicate -> !isJoinEqualityCondition(predicate))
                     .collect(toImmutableList());
@@ -425,7 +423,9 @@ public class ReorderJoins
                     return getPossibleJoinNodes(joinNode, REPLICATED);
                 case AUTOMATIC:
                     ImmutableList.Builder<JoinEnumerationResult> result = ImmutableList.builder();
-                    result.addAll(getPossibleJoinNodes(joinNode, PARTITIONED));
+                    if (!joinNode.getCriteria().isEmpty()) {
+                        result.addAll(getPossibleJoinNodes(joinNode, PARTITIONED));
+                    }
                     result.addAll(getPossibleJoinNodes(joinNode, REPLICATED, node -> isBelowMaxBroadcastSize(node, context)));
                     return result.build();
                 default:
