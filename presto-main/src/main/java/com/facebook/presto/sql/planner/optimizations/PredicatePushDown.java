@@ -13,8 +13,10 @@
  */
 package com.facebook.presto.sql.planner.optimizations;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.function.OperatorType;
+import com.facebook.presto.common.predicate.TupleDomain;
 import com.facebook.presto.common.type.BooleanType;
 import com.facebook.presto.common.type.VarcharType;
 import com.facebook.presto.expressions.DynamicFilters;
@@ -22,6 +24,7 @@ import com.facebook.presto.expressions.LogicalRowExpressions;
 import com.facebook.presto.expressions.RowExpressionNodeInliner;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.AggregationNode;
@@ -35,6 +38,7 @@ import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.spi.plan.UnionNode;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.ConstantExpression;
+import com.facebook.presto.spi.relation.DomainTranslator;
 import com.facebook.presto.spi.relation.ExpressionOptimizer;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
@@ -44,6 +48,7 @@ import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.RowExpressionVariableInliner;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.VariablesExtractor;
+import com.facebook.presto.sql.planner.iterative.rule.PickTableLayout;
 import com.facebook.presto.sql.planner.plan.AssignUniqueId;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.GroupIdNode;
@@ -95,6 +100,7 @@ import static com.facebook.presto.expressions.LogicalRowExpressions.extractConju
 import static com.facebook.presto.spi.plan.ProjectNode.Locality;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.LOCAL;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.REMOTE;
+import static com.facebook.presto.spi.relation.DomainTranslator.BASIC_COLUMN_EXTRACTOR;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.identityAssignments;
 import static com.facebook.presto.sql.planner.plan.JoinNode.DistributionType.PARTITIONED;
@@ -177,6 +183,8 @@ public class PredicatePushDown
         private final LogicalRowExpressions logicalRowExpressions;
         private final FunctionAndTypeManager functionAndTypeManager;
         private final ExternalCallExpressionChecker externalCallExpressionChecker;
+        private final DomainTranslator translator;
+        private final Logger log;
 
         private Rewriter(
                 VariableAllocator variableAllocator,
@@ -196,6 +204,8 @@ public class PredicatePushDown
             this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, new FunctionResolution(metadata.getFunctionAndTypeManager().getFunctionAndTypeResolver()), metadata.getFunctionAndTypeManager());
             this.functionAndTypeManager = metadata.getFunctionAndTypeManager();
             this.externalCallExpressionChecker = new ExternalCallExpressionChecker(functionAndTypeManager);
+            this.translator = new RowExpressionDomainTranslator(this.metadata);
+            log = Logger.get(PredicatePushDown.class);
         }
 
         @Override
@@ -1609,11 +1619,36 @@ public class PredicatePushDown
         {
             RowExpression predicate = simplifyExpression(context.get());
 
-            if (!TRUE_CONSTANT.equals(predicate)) {
+            if (TRUE_CONSTANT.equals(predicate)) {
+                return node;
+            }
+            if (!determinismEvaluator.isDeterministic(predicate)) {
                 return new FilterNode(node.getSourceLocation(), idAllocator.getNextId(), node, predicate);
             }
 
-            return node;
+            DomainTranslator.ExtractionResult<VariableReferenceExpression> decomposedPredicate = translator.fromPredicate(
+                    session.toConnectorSession(),
+                    predicate,
+                    BASIC_COLUMN_EXTRACTOR);
+
+            PlanNode finalNode;
+            if (node.getCurrentConstraint() != null
+                    && decomposedPredicate.getRemainingExpression().equals(TRUE_CONSTANT)
+                    && decomposedPredicate.getTupleDomain().transform(variableName -> node.getAssignments().get(variableName)).contains(node.getCurrentConstraint())) {
+                finalNode = node;
+            }
+            else {
+                finalNode = new FilterNode(node.getSourceLocation(), idAllocator.getNextId(), node, predicate);
+            }
+
+            if (node.getCurrentConstraint()!=null) {
+                log.info("Table had a constraint : %s, Pushed filter was %s, we returned a [%s]",
+                        node.getCurrentConstraint().getDomains().orElse(null),
+                        predicate,
+                        finalNode.getClass().getSimpleName());
+            }
+
+            return finalNode;
         }
 
         @Override
