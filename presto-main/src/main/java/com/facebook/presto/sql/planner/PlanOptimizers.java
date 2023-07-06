@@ -444,7 +444,9 @@ public class PlanOptimizers
                         statsCalculator,
                         estimatedExchangesCostCalculator,
                         ImmutableSet.of(new RewriteAggregationIfToFilter(metadata.getFunctionAndTypeManager()))),
+                new LogPlanTreeOptimizer("Before first pushdown"),
                 predicatePushDown,
+                new LogPlanTreeOptimizer("After first pushdown"),
                 new IterativeOptimizer(
                         ruleStats,
                         statsCalculator,
@@ -594,19 +596,17 @@ public class PlanOptimizers
                         new CreatePartialTopN(),
                         new PushTopNThroughUnion())));
 
-        //Attempt to remove redundant projects one more time before ReorderJoins
-        builder.add(new LogPlanTreeOptimizer("Before : Attempt to remove junk Projects before ReorderJoins"));
-        builder.add(new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
-                        ImmutableSet.of(new RemoveRedundantIdentityProjections(), new PruneRedundantProjectionAssignments())),
-                new PushdownSubfields(metadata));
-        builder.add(new LogPlanTreeOptimizer("After : Attempt to remove junk Projects before ReorderJoins"));
-
         // We do a single pass, and assign `statsEquivalentPlanNode` to each node.
         // After this step, nodes with same `statsEquivalentPlanNode` will share same history based statistics.
         builder.add(new StatsRecordingPlanOptimizer(optimizerStats, new HistoricalStatisticsEquivalentPlanMarkingOptimizer(statsCalculator)));
+
+        builder.add(new LogPlanTreeOptimizer("Start : One last TableLayout/Predicate merge"));
+        builder.add(new IterativeOptimizer(
+                ruleStats,
+                statsCalculator,
+                estimatedExchangesCostCalculator,
+                new PickTableLayout(metadata).rules()));
+        builder.add(new LogPlanTreeOptimizer("Done : One last TableLayout/Predicate merge"));
 
         builder.add(new IterativeOptimizer(
                 // Because ReorderJoins runs only once,
@@ -756,6 +756,8 @@ public class PlanOptimizers
 
         // Precomputed hashes - this assumes that partitioning will not change
         builder.add(new HashGenerationOptimizer(metadata.getFunctionAndTypeManager()));
+
+        builder.add(new LogPlanTreeOptimizer("Final plan"));
 
         builder.add(new MetadataDeleteOptimizer(metadata));
 

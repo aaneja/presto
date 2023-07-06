@@ -139,8 +139,9 @@ public class LogPlanTreeOptimizer
         public Void visitTableScan(TableScanNode node, Integer indent)
         {
             ConnectorTableHandle connectorTableHandle = node.getTable().getConnectorHandle();
-            output(indent, "scan (%s) Constraints [Current (%s), Enforced(%s)]",
+            output(indent, "scan (%s) ,Outputs : (%s), Constraints [Current (%s), Enforced(%s)]",
                     connectorTableHandle.toString(),
+                    node.getOutputVariables(),
                     node.getCurrentConstraint().getDomains(),
                     node.getEnforcedConstraint().getDomains());
             return null;
