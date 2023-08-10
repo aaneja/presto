@@ -25,7 +25,7 @@ import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import java.util.List;
 
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
-import static com.facebook.presto.sql.planner.plan.AssignmentUtils.identitiesAsSymbolReferences;
+import static com.facebook.presto.sql.planner.plan.AssignmentUtils.identityAssignments;
 import static com.facebook.presto.sql.planner.plan.Patterns.lateralJoin;
 
 /**
@@ -72,12 +72,12 @@ public class TransformCorrelatedSingleRowSubqueryToProject
                 .where(node -> node instanceof ProjectNode && !node.getOutputVariables().equals(parent.getCorrelation()))
                 .findAll();
 
-        if (subqueryProjections.size() == 0) {
+        if (subqueryProjections.isEmpty()) {
             return Result.ofPlanNode(parent.getInput());
         }
         else if (subqueryProjections.size() == 1) {
             Assignments assignments = Assignments.builder()
-                    .putAll(identitiesAsSymbolReferences(parent.getInput().getOutputVariables()))
+                    .putAll(identityAssignments(parent.getInput().getOutputVariables()))
                     .putAll(subqueryProjections.get(0).getAssignments())
                     .build();
             return Result.ofPlanNode(projectNode(parent.getInput(), assignments, context));
@@ -93,6 +93,6 @@ public class TransformCorrelatedSingleRowSubqueryToProject
 
     private static boolean isSingleRowValuesWithNoColumns(ValuesNode values)
     {
-        return values.getRows().size() == 1 && values.getRows().get(0).size() == 0;
+        return values.getRows().size() == 1 && values.getRows().get(0).isEmpty();
     }
 }

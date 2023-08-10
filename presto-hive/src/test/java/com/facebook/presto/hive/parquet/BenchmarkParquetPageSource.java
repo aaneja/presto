@@ -64,7 +64,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -246,11 +245,11 @@ public class BenchmarkParquetPageSource
             List<Float> filterRates = Arrays.stream(filterRateSignature.split("\\|")).map(r -> Float.parseFloat(r)).collect(toImmutableList());
             channelCount = filterRates.size();
 
-            Iterator<?>[] values = new Iterator<?>[channelCount];
+            List<?>[] values = new List<?>[channelCount];
             for (int i = 0; i < channelCount; i++) {
                 float filterRate = filterRates.get(i);
                 Pair<Boolean, Float> filterInfoForNonNull = getFilterInfoForNonNull(filterRate);
-                values[i] = createValues(filterRate).iterator();
+                values[i] = createValues(filterRate);
                 filters.add(getFilter(i, type, filterRate, filterInfoForNonNull.getKey(), filterInfoForNonNull.getValue()));
                 columnNames.add("column" + i);
             }
@@ -267,7 +266,7 @@ public class BenchmarkParquetPageSource
             PageFunctionCompiler pageFunctionCompiler = new PageFunctionCompiler(metadata, 0);
             pageProcessor = new ExpressionCompiler(metadata, pageFunctionCompiler).compilePageProcessor(testSession.getSqlFunctionProperties(), filterConjunction(), projections).get();
 
-            parquetMetadata = MetadataReader.readFooter(new FileParquetDataSource(parquetFile), parquetFile.length()).getParquetMetadata();
+            parquetMetadata = MetadataReader.readFooter(new FileParquetDataSource(parquetFile), parquetFile.length(), Optional.empty(), false).getParquetMetadata();
         }
 
         @TearDown
@@ -290,8 +289,7 @@ public class BenchmarkParquetPageSource
                 fields.add(ColumnIOConverter.constructField(getTypeFromTypeSignature(), messageColumnIO.getChild(i)));
             }
 
-            ParquetReader parquetReader = new ParquetReader(messageColumnIO, parquetMetadata.getBlocks(), dataSource, newSimpleAggregatedMemoryContext(), new DataSize(16, MEGABYTE), batchReadEnabled, enableVerification);
-
+            ParquetReader parquetReader = new ParquetReader(messageColumnIO, parquetMetadata.getBlocks(), Optional.empty(), dataSource, newSimpleAggregatedMemoryContext(), new DataSize(16, MEGABYTE), batchReadEnabled, enableVerification, null, null, false, Optional.empty());
             return new ParquetPageSource(parquetReader, Collections.nCopies(channelCount, type), fields, columnNames, new RuntimeStats());
         }
 

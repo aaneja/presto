@@ -24,16 +24,18 @@ import com.facebook.presto.execution.QueryManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorId;
-import com.facebook.presto.spi.ConnectorMaterializedViewDefinition;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.Constraint;
-import com.facebook.presto.spi.MaterializedViewStatus;
+import com.facebook.presto.spi.MaterializedViewDefinition;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.TableLayoutFilterCoverage;
+import com.facebook.presto.spi.TableMetadata;
+import com.facebook.presto.spi.analyzer.MetadataResolver;
+import com.facebook.presto.spi.analyzer.ViewDefinition;
 import com.facebook.presto.spi.api.Experimental;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
@@ -67,16 +69,7 @@ public interface Metadata
 
     void registerBuiltInFunctions(List<? extends SqlFunction> functions);
 
-    boolean schemaExists(Session session, CatalogSchemaName schema);
-
-    boolean catalogExists(Session session, String catalogName);
-
     List<String> listSchemaNames(Session session, String catalogName);
-
-    /**
-     * Returns a table handle for the specified table name.
-     */
-    Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName);
 
     Optional<SystemTable> getSystemTable(Session session, QualifiedObjectName tableName);
 
@@ -233,6 +226,11 @@ public interface Metadata
      */
     void dropTable(Session session, TableHandle tableHandle);
 
+    /**
+     * Truncates the specified table
+     */
+    void truncateTable(Session session, TableHandle tableHandle);
+
     Optional<NewTableLayout> getNewTableLayout(Session session, String catalogName, ConnectorTableMetadata tableMetadata);
 
     @Experimental
@@ -344,11 +342,6 @@ public interface Metadata
     Map<QualifiedObjectName, ViewDefinition> getViews(Session session, QualifiedTablePrefix prefix);
 
     /**
-     * Returns the view definition for the specified view name.
-     */
-    Optional<ViewDefinition> getView(Session session, QualifiedObjectName viewName);
-
-    /**
      * Creates the specified view with the specified view definition.
      */
     void createView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, String viewData, boolean replace);
@@ -359,24 +352,14 @@ public interface Metadata
     void dropView(Session session, QualifiedObjectName viewName);
 
     /**
-     * Returns the materialized view definition for the specified materialized view name.
-     */
-    Optional<ConnectorMaterializedViewDefinition> getMaterializedView(Session session, QualifiedObjectName viewName);
-
-    /**
      * Creates the specified materialized view with the specified view definition.
      */
-    void createMaterializedView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, ConnectorMaterializedViewDefinition viewDefinition, boolean ignoreExisting);
+    void createMaterializedView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, MaterializedViewDefinition viewDefinition, boolean ignoreExisting);
 
     /**
      * Drops the specified materialized view.
      */
     void dropMaterializedView(Session session, QualifiedObjectName viewName);
-
-    /**
-     * Get Materialized view status
-     */
-    MaterializedViewStatus getMaterializedViewStatus(Session session, QualifiedObjectName materializedViewName);
 
     /**
      * Begin refresh materialized view
@@ -473,6 +456,7 @@ public interface Metadata
 
     MetadataUpdates getMetadataUpdateResults(Session session, QueryManager queryManager, MetadataUpdates metadataUpdates, QueryId queryId);
 
+    // TODO: metadata should not provide FunctionAndTypeManager
     FunctionAndTypeManager getFunctionAndTypeManager();
 
     ProcedureRegistry getProcedureRegistry();
@@ -488,6 +472,8 @@ public interface Metadata
     ColumnPropertyManager getColumnPropertyManager();
 
     AnalyzePropertyManager getAnalyzePropertyManager();
+
+    MetadataResolver getMetadataResolver(Session session);
 
     Set<ConnectorCapabilities> getConnectorCapabilities(Session session, ConnectorId catalogName);
 

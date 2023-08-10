@@ -15,12 +15,10 @@ package com.facebook.presto.operator.aggregation.builder;
 
 import com.facebook.presto.common.Page;
 import com.facebook.presto.common.PageBuilder;
-import com.facebook.presto.common.array.IntBigArray;
 import com.facebook.presto.common.block.BlockBuilder;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.GroupByHash;
-import com.facebook.presto.operator.GroupByIdBlock;
 import com.facebook.presto.operator.HashCollisionsCounter;
 import com.facebook.presto.operator.OperatorContext;
 import com.facebook.presto.operator.TransformWork;
@@ -29,7 +27,8 @@ import com.facebook.presto.operator.Work;
 import com.facebook.presto.operator.WorkProcessor;
 import com.facebook.presto.operator.WorkProcessor.ProcessState;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
-import com.facebook.presto.operator.aggregation.GroupedAccumulator;
+import com.facebook.presto.spi.function.aggregation.GroupByIdBlock;
+import com.facebook.presto.spi.function.aggregation.GroupedAccumulator;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.AggregationNode.Step;
 import com.facebook.presto.sql.gen.JoinCompiler;
@@ -38,7 +37,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
-import it.unimi.dsi.fastutil.ints.AbstractIntIterator;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntIterators;
 
@@ -261,7 +259,7 @@ public class InMemoryHashAggregationBuilder
 
     public WorkProcessor<Page> buildHashSortedResult()
     {
-        return buildResult(hashSortedGroupIds());
+        return buildResult(groupByHash.getHashSortedGroupIds());
     }
 
     public List<Type> buildIntermediateTypes()
@@ -352,36 +350,6 @@ public class InMemoryHashAggregationBuilder
     private IntIterator consecutiveGroupIds()
     {
         return IntIterators.fromTo(0, groupByHash.getGroupCount());
-    }
-
-    private IntIterator hashSortedGroupIds()
-    {
-        IntBigArray groupIds = new IntBigArray();
-        groupIds.ensureCapacity(groupByHash.getGroupCount());
-        for (int i = 0; i < groupByHash.getGroupCount(); i++) {
-            groupIds.set(i, i);
-        }
-
-        groupIds.sort(0, groupByHash.getGroupCount(), (leftGroupId, rightGroupId) ->
-                Long.compare(groupByHash.getRawHash(leftGroupId), groupByHash.getRawHash(rightGroupId)));
-
-        return new AbstractIntIterator()
-        {
-            private final int totalPositions = groupByHash.getGroupCount();
-            private int position;
-
-            @Override
-            public boolean hasNext()
-            {
-                return position < totalPositions;
-            }
-
-            @Override
-            public int nextInt()
-            {
-                return groupIds.get(position++);
-            }
-        };
     }
 
     private static class Aggregator

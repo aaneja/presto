@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.spi.plan.AggregationNode;
@@ -22,6 +23,7 @@ import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.relation.CallExpression;
+import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.Lookup;
@@ -101,7 +103,7 @@ public class AddIntermediateAggregations
         Lookup lookup = context.getLookup();
         PlanNodeIdAllocator idAllocator = context.getIdAllocator();
         Session session = context.getSession();
-        TypeProvider types = context.getVariableAllocator().getTypes();
+        TypeProvider types = TypeProvider.viewOf(context.getVariableAllocator().getVariables());
 
         Optional<PlanNode> rewrittenSource = recurseToPartial(lookup.resolve(aggregation.getSource()), lookup, idAllocator, types);
 
@@ -189,19 +191,7 @@ public class AddIntermediateAggregations
             VariableReferenceExpression output = entry.getKey();
             Aggregation aggregation = entry.getValue();
             checkState(!aggregation.getOrderBy().isPresent(), "Intermediate aggregation does not support ORDER BY");
-            builder.put(
-                    output,
-                    new Aggregation(
-                            new CallExpression(
-                                    aggregation.getCall().getSourceLocation(),
-                                    aggregation.getCall().getDisplayName(),
-                                    aggregation.getCall().getFunctionHandle(),
-                                    aggregation.getCall().getType(),
-                                    ImmutableList.of(output)),
-                            Optional.empty(),
-                            Optional.empty(),
-                            false,
-                            Optional.empty()));  // No mask for INTERMEDIATE
+            appendAggregation(builder, aggregation, output, aggregation.getCall().getType());
         }
         return builder.build();
     }
@@ -224,8 +214,31 @@ public class AddIntermediateAggregations
                 return ImmutableMap.of();
             }
             VariableReferenceExpression input = getOnlyElement(extractAggregationUniqueVariables(entry.getValue(), types));
-            builder.put(input, entry.getValue());
+            // Return type of intermediate aggregation is the same as the input type.
+            RowExpression argumentExpr = aggregation.getCall().getArguments().get(0);
+            Type returnType = argumentExpr.getType();
+            appendAggregation(builder, aggregation, input, returnType);
         }
         return builder.build();
+    }
+
+    /**
+     * Helper function to add an aggregation to the aggregation map builder.
+     */
+    private static void appendAggregation(ImmutableMap.Builder<VariableReferenceExpression, Aggregation> builder, Aggregation aggregation, VariableReferenceExpression varRef, Type returnType)
+    {
+        builder.put(
+                varRef,
+                new Aggregation(
+                        new CallExpression(
+                                aggregation.getCall().getSourceLocation(),
+                                aggregation.getCall().getDisplayName(),
+                                aggregation.getCall().getFunctionHandle(),
+                                returnType,
+                                ImmutableList.of(varRef)),
+                        Optional.empty(),
+                        Optional.empty(),
+                        false,
+                        Optional.empty()));  // No mask for INTERMEDIATE
     }
 }

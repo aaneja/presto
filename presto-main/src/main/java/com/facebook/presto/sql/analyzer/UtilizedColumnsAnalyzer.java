@@ -15,7 +15,7 @@ package com.facebook.presto.sql.analyzer;
 
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.common.QualifiedObjectName;
-import com.facebook.presto.sql.analyzer.Analysis.AccessControlInfo;
+import com.facebook.presto.spi.analyzer.AccessControlInfo;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.Cube;
 import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
@@ -408,6 +408,7 @@ public class UtilizedColumnsAnalyzer
         protected Void visitDereferenceExpression(DereferenceExpression dereferenceExpression, Context context)
         {
             handleExpression(dereferenceExpression, context);
+            process(dereferenceExpression.getBase(), context);
 
             return null;
         }

@@ -44,6 +44,7 @@ import com.facebook.presto.spi.plan.IntersectNode;
 import com.facebook.presto.spi.plan.LimitNode;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.plan.OrderingScheme;
+import com.facebook.presto.spi.plan.OutputNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.plan.ProjectNode;
@@ -62,6 +63,7 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.GroupReference;
 import com.facebook.presto.sql.planner.optimizations.JoinNodeUtils;
+import com.facebook.presto.sql.planner.plan.AbstractJoinNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.AssignUniqueId;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
@@ -74,8 +76,8 @@ import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
+import com.facebook.presto.sql.planner.plan.MergeJoinNode;
 import com.facebook.presto.sql.planner.plan.MetadataDeleteNode;
-import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
@@ -109,6 +111,7 @@ import io.airlift.slice.Slice;
 import io.airlift.units.Duration;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +121,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.facebook.presto.SystemSessionProperties.isVerboseOptimizerInfoEnabled;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.expressions.DynamicFilters.extractDynamicFilters;
@@ -129,6 +133,7 @@ import static com.facebook.presto.sql.planner.planPrinter.PlanNodeStatsSummarize
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.formatDouble;
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.formatPositions;
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.indentString;
+import static com.facebook.presto.util.GraphvizPrinter.printDistributedFromFragments;
 import static com.google.common.base.CaseFormat.UPPER_UNDERSCORE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -150,10 +155,10 @@ public class PlanPrinter
             PlanNode planRoot,
             TypeProvider types,
             Optional<StageExecutionDescriptor> stageExecutionStrategy,
-            FunctionAndTypeManager functionAndTypeManager,
             StatsAndCosts estimatedStatsAndCosts,
-            Session session,
-            Optional<Map<PlanNodeId, PlanNodeStats>> stats)
+            Optional<Map<PlanNodeId, PlanNodeStats>> stats,
+            FunctionAndTypeManager functionAndTypeManager,
+            Session session)
     {
         requireNonNull(planRoot, "planRoot is null");
         requireNonNull(types, "types is null");
@@ -164,7 +169,7 @@ public class PlanPrinter
         this.functionAndTypeManager = functionAndTypeManager;
         this.logicalRowExpressions = new LogicalRowExpressions(
                 new RowExpressionDeterminismEvaluator(functionAndTypeManager),
-                new FunctionResolution(functionAndTypeManager),
+                new FunctionResolution(functionAndTypeManager.getFunctionAndTypeResolver()),
                 functionAndTypeManager);
 
         Optional<Duration> totalCpuTime = stats.map(s -> new Duration(s.values().stream()
@@ -175,7 +180,13 @@ public class PlanPrinter
                 .mapToLong(planNode -> planNode.getPlanNodeScheduledTime().toMillis())
                 .sum(), MILLISECONDS));
 
-        this.representation = new PlanRepresentation(planRoot, types, totalCpuTime, totalScheduledTime);
+        this.representation = new PlanRepresentation(
+                planRoot,
+                types,
+                totalCpuTime,
+                totalScheduledTime,
+                session.getOptimizerInformationCollector().getOptimizationInfo(),
+                session.getOptimizerResultCollector().getOptimizerResults());
 
         RowExpressionFormatter rowExpressionFormatter = new RowExpressionFormatter(functionAndTypeManager);
         ConnectorSession connectorSession = requireNonNull(session, "session is null").toConnectorSession();
@@ -185,52 +196,60 @@ public class PlanPrinter
         planRoot.accept(visitor, null);
     }
 
-    public String toText(boolean verbose, int level)
+    public String toText(boolean verbose, int level, boolean verboseOptimizerInfo)
     {
-        return new TextRenderer(verbose, level).render(representation);
+        return new TextRenderer(verbose, level, verboseOptimizerInfo).render(representation);
     }
 
     public String toJson()
     {
-        return new JsonRenderer().render(representation);
+        return new JsonRenderer(functionAndTypeManager).render(representation);
     }
 
-    public static String jsonFragmentPlan(PlanNode root, Set<VariableReferenceExpression> variables, FunctionAndTypeManager functionAndTypeManager, Session session)
+    public static String jsonFragmentPlan(PlanNode root, Set<VariableReferenceExpression> variables, StatsAndCosts estimatedStatsAndCosts, FunctionAndTypeManager functionAndTypeManager, Session session)
     {
         TypeProvider typeProvider = TypeProvider.fromVariables(variables);
 
-        return new PlanPrinter(root, typeProvider, Optional.empty(), functionAndTypeManager, StatsAndCosts.empty(), session, Optional.empty()).toJson();
+        return new PlanPrinter(root, typeProvider, Optional.empty(), estimatedStatsAndCosts, Optional.empty(), functionAndTypeManager, session).toJson();
     }
 
-    public static String textLogicalPlan(PlanNode plan, TypeProvider types, FunctionAndTypeManager functionAndTypeManager, StatsAndCosts estimatedStatsAndCosts, Session session, int level)
+    public static String textLogicalPlan(PlanNode plan, TypeProvider types, StatsAndCosts estimatedStatsAndCosts, FunctionAndTypeManager functionAndTypeManager, Session session, int level)
     {
-        return new PlanPrinter(plan, types, Optional.empty(), functionAndTypeManager, estimatedStatsAndCosts, session, Optional.empty()).toText(false, level);
+        return new PlanPrinter(plan, types,
+                Optional.empty(),
+                estimatedStatsAndCosts,
+                Optional.empty(),
+                functionAndTypeManager,
+                session)
+                .toText(false, level, isVerboseOptimizerInfoEnabled(session));
     }
 
     public static String textLogicalPlan(
             PlanNode plan,
             TypeProvider types,
-            FunctionAndTypeManager functionAndTypeManager,
             StatsAndCosts estimatedStatsAndCosts,
+            FunctionAndTypeManager functionAndTypeManager,
             Session session,
             int level,
-            boolean verbose)
+            boolean verbose,
+            boolean verboseOptimizerInfoEnabled)
     {
-        return textLogicalPlan(plan, types, Optional.empty(), functionAndTypeManager, estimatedStatsAndCosts, session, Optional.empty(), level, verbose);
+        return textLogicalPlan(plan, types, Optional.empty(), estimatedStatsAndCosts, Optional.empty(), functionAndTypeManager, session, level, verbose, verboseOptimizerInfoEnabled);
     }
 
     public static String textLogicalPlan(
             PlanNode plan,
             TypeProvider types,
             Optional<StageExecutionDescriptor> stageExecutionStrategy,
-            FunctionAndTypeManager functionAndTypeManager,
             StatsAndCosts estimatedStatsAndCosts,
-            Session session,
             Optional<Map<PlanNodeId, PlanNodeStats>> stats,
+            FunctionAndTypeManager functionAndTypeManager,
+            Session session,
             int level,
-            boolean verbose)
+            boolean verbose,
+            boolean verboseOptimizerInfoEnabled)
     {
-        return new PlanPrinter(plan, types, stageExecutionStrategy, functionAndTypeManager, estimatedStatsAndCosts, session, stats).toText(verbose, level);
+        return new PlanPrinter(plan, types, stageExecutionStrategy, estimatedStatsAndCosts, stats, functionAndTypeManager, session).toText(verbose, level, verboseOptimizerInfoEnabled);
     }
 
     public static String textDistributedPlan(StageInfo outputStageInfo, FunctionAndTypeManager functionAndTypeManager, Session session, boolean verbose)
@@ -297,21 +316,21 @@ public class PlanPrinter
             Session session,
             Optional<Map<PlanNodeId, PlanNodeStats>> stats)
     {
-        return new PlanPrinter(plan, types, stageExecutionStrategy, functionAndTypeManager, estimatedStatsAndCosts, session, stats).toJson();
+        return new PlanPrinter(plan, types, stageExecutionStrategy, estimatedStatsAndCosts, stats, functionAndTypeManager, session).toJson();
     }
 
-    public static String jsonDistributedPlan(StageInfo outputStageInfo)
+    public static String jsonDistributedPlan(StageInfo outputStageInfo, FunctionAndTypeManager functionAndTypeManager)
     {
         List<PlanFragment> allFragments = getAllStages(Optional.of(outputStageInfo)).stream()
                 .map(StageInfo::getPlan)
                 .map(Optional::get)
                 .collect(toImmutableList());
-        return formatJsonFragmentList(allFragments);
+        return formatJsonFragmentList(allFragments, functionAndTypeManager);
     }
 
-    public static String jsonDistributedPlan(SubPlan plan)
+    public static String jsonDistributedPlan(SubPlan plan, FunctionAndTypeManager functionAndTypeManager)
     {
-        return formatJsonFragmentList(plan.getAllFragments());
+        return formatJsonFragmentList(plan.getAllFragments(), functionAndTypeManager);
     }
 
     private String formatSourceLocation(Optional<SourceLocation> sourceLocation1, Optional<SourceLocation> sourceLocation2)
@@ -332,7 +351,7 @@ public class PlanPrinter
         return "";
     }
 
-    private static String formatJsonFragmentList(List<PlanFragment> fragments)
+    private static String formatJsonFragmentList(List<PlanFragment> fragments, FunctionAndTypeManager functionAndTypeManager)
     {
         ImmutableSortedMap.Builder<PlanFragmentId, JsonPlanFragment> fragmentJsonMap = ImmutableSortedMap.naturalOrder();
         for (PlanFragment fragment : fragments) {
@@ -340,7 +359,7 @@ public class PlanPrinter
             JsonPlanFragment jsonPlanFragment = new JsonPlanFragment(fragment.getJsonRepresentation().get());
             fragmentJsonMap.put(fragmentId, jsonPlanFragment);
         }
-        return new JsonRenderer().render(fragmentJsonMap.build());
+        return new JsonRenderer(functionAndTypeManager).render(fragmentJsonMap.build());
     }
 
     private static String formatFragment(
@@ -352,7 +371,7 @@ public class PlanPrinter
             boolean verbose)
     {
         StringBuilder builder = new StringBuilder();
-        builder.append(format("Fragment %s [%s]\n",
+        builder.append(format("Fragment %s [%s]%n",
                 fragment.getId(),
                 fragment.getPartitioning()));
 
@@ -365,7 +384,7 @@ public class PlanPrinter
             double sdAmongTasks = Math.sqrt(squaredDifferences / tasks.size());
 
             builder.append(indentString(1))
-                    .append(format("CPU: %s, Scheduled: %s, Input: %s (%s); per task: avg.: %s std.dev.: %s, Output: %s (%s)\n",
+                    .append(format("CPU: %s, Scheduled: %s, Input: %s (%s); per task: avg.: %s std.dev.: %s, Output: %s (%s)%n",
                             stageExecutionStats.getTotalCpuTime().convertToMostSuccinctTimeUnit(),
                             stageExecutionStats.getTotalScheduledTime().convertToMostSuccinctTimeUnit(),
                             formatPositions(stageExecutionStats.getProcessedInputPositions()),
@@ -378,24 +397,24 @@ public class PlanPrinter
 
         PartitioningScheme partitioningScheme = fragment.getPartitioningScheme();
         builder.append(indentString(1))
-                .append(format("Output layout: [%s]\n",
+                .append(format("Output layout: [%s]%n",
                         Joiner.on(", ").join(partitioningScheme.getOutputLayout())));
 
         builder.append(indentString(1));
         boolean replicateNullsAndAny = partitioningScheme.isReplicateNullsAndAny();
         if (replicateNullsAndAny) {
-            builder.append(format("Output partitioning: %s (replicate nulls and any) [%s]%s\n",
+            builder.append(format("Output partitioning: %s (replicate nulls and any) [%s]%s%n",
                     partitioningScheme.getPartitioning().getHandle(),
                     Joiner.on(", ").join(partitioningScheme.getPartitioning().getArguments()),
                     formatHash(partitioningScheme.getHashColumn())));
         }
         else {
-            builder.append(format("Output partitioning: %s [%s]%s\n",
+            builder.append(format("Output partitioning: %s [%s]%s%n",
                     partitioningScheme.getPartitioning().getHandle(),
                     Joiner.on(", ").join(partitioningScheme.getPartitioning().getArguments()),
                     formatHash(partitioningScheme.getHashColumn())));
         }
-        builder.append(indentString(1)).append(format("Stage Execution Strategy: %s\n", fragment.getStageExecutionDescriptor().getStageExecutionStrategy()));
+        builder.append(indentString(1)).append(format("Stage Execution Strategy: %s%n", fragment.getStageExecutionDescriptor().getStageExecutionStrategy()));
 
         TypeProvider typeProvider = TypeProvider.fromVariables(fragment.getVariables());
         builder.append(
@@ -403,18 +422,19 @@ public class PlanPrinter
                         fragment.getRoot(),
                         typeProvider,
                         Optional.of(fragment.getStageExecutionDescriptor()),
-                        functionAndTypeManager,
                         fragment.getStatsAndCosts(),
-                        session,
                         planNodeStats,
+                        functionAndTypeManager,
+                        session,
                         1,
-                        verbose))
+                        verbose,
+                        isVerboseOptimizerInfoEnabled(session)))
                 .append("\n");
 
         return builder.toString();
     }
 
-    public static String graphvizLogicalPlan(PlanNode plan, TypeProvider types, Session session, FunctionAndTypeManager functionAndTypeManager)
+    public static String graphvizLogicalPlan(PlanNode plan, TypeProvider types, StatsAndCosts estimatedStatsAndCosts, FunctionAndTypeManager functionAndTypeManager, Session session)
     {
         // TODO: This should move to something like GraphvizRenderer
         PlanFragment fragment = new PlanFragment(
@@ -426,14 +446,24 @@ public class PlanPrinter
                 new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), plan.getOutputVariables()),
                 StageExecutionDescriptor.ungroupedExecution(),
                 false,
-                StatsAndCosts.empty(),
+                estimatedStatsAndCosts,
                 Optional.empty());
-        return GraphvizPrinter.printLogical(ImmutableList.of(fragment), session, functionAndTypeManager);
+        return GraphvizPrinter.printLogical(ImmutableList.of(fragment), functionAndTypeManager, session);
     }
 
-    public static String graphvizDistributedPlan(SubPlan plan, Session session, FunctionAndTypeManager functionAndTypeManager)
+    public static String graphvizDistributedPlan(SubPlan plan, FunctionAndTypeManager functionAndTypeManager, Session session)
     {
-        return GraphvizPrinter.printDistributed(plan, session, functionAndTypeManager);
+        return GraphvizPrinter.printDistributed(plan, functionAndTypeManager, session);
+    }
+
+    public static String graphvizDistributedPlan(StageInfo stageInfo, FunctionAndTypeManager functionAndTypeManager, Session session)
+    {
+        List<PlanFragment> allFragments = getAllStages(Optional.of(stageInfo)).stream()
+                .map(StageInfo::getPlan)
+                .map(Optional::get)
+                .sorted(Comparator.comparing(PlanFragment::getId))
+                .collect(toImmutableList());
+        return printDistributedFromFragments(allFragments, functionAndTypeManager, session);
     }
 
     private class Visitor
@@ -483,11 +513,7 @@ public class PlanPrinter
 
             node.getDistributionType().ifPresent(distributionType -> nodeOutput.appendDetailsLine("Distribution: %s", distributionType));
             if (!node.getDynamicFilters().isEmpty()) {
-                nodeOutput.appendDetails(
-                        "dynamicFilterAssignments = %s",
-                        node.getDynamicFilters().entrySet().stream()
-                                .map(filter -> filter.getValue() + " -> " + filter.getKey())
-                                .collect(Collectors.joining(", ", "{", "}")));
+                nodeOutput.appendDetails(getDynamicFilterAssignments(node));
             }
 
             node.getSortExpressionContext(functionAndTypeManager)
@@ -523,11 +549,7 @@ public class PlanPrinter
                             formatHash(node.getSourceHashVariable(), node.getFilteringSourceHashVariable())));
             node.getDistributionType().ifPresent(distributionType -> nodeOutput.appendDetailsLine("Distribution: %s", distributionType));
             if (!node.getDynamicFilters().isEmpty()) {
-                nodeOutput.appendDetails(
-                        "dynamicFilterAssignments = %s",
-                        node.getDynamicFilters().entrySet().stream()
-                                .map(filter -> filter.getValue() + " -> " + filter.getKey())
-                                .collect(Collectors.joining(", ", "{", "}")));
+                nodeOutput.appendDetails(getDynamicFilterAssignments(node));
             }
             node.getSource().accept(this, context);
             node.getFilteringSource().accept(this, context);
@@ -570,6 +592,23 @@ public class PlanPrinter
         }
 
         @Override
+        public Void visitMergeJoin(MergeJoinNode node, Void context)
+        {
+            List<String> joinExpressions = new ArrayList<>();
+            for (JoinNode.EquiJoinClause clause : node.getCriteria()) {
+                joinExpressions.add(JoinNodeUtils.toExpression(clause).toString());
+            }
+            node.getFilter().map(formatter::apply).ifPresent(joinExpressions::add);
+
+            addNode(node,
+                    "MergeJoin",
+                    format("[type: %s], [%s]%s", node.getType().getJoinLabel(), Joiner.on(" AND ").join(joinExpressions), formatHash(node.getLeftHashVariable(), node.getRightHashVariable())));
+            node.getLeft().accept(this, context);
+            node.getRight().accept(this, context);
+            return null;
+        }
+
+        @Override
         public Void visitLimit(LimitNode node, Void context)
         {
             addNode(node,
@@ -593,6 +632,9 @@ public class PlanPrinter
             String type = "";
             if (node.getStep() != AggregationNode.Step.SINGLE) {
                 type = format("(%s)", node.getStep().toString());
+            }
+            if (node.isSegmentedAggregationEligible()) {
+                type = format("%s(SEGMENTED, %s)", type, node.getPreGroupedVariables());
             }
             if (node.isStreamable()) {
                 type = format("%s(STREAMING)", type);
@@ -738,7 +780,7 @@ public class PlanPrinter
             args.add(format("order by (%s)", Joiner.on(", ").join(orderBy)));
 
             NodeRepresentation nodeOutput = addNode(node,
-                    "TopNRowNumber",
+                    format("TopNRowNumber%s", node.isPartial() ? "Partial" : ""),
                     format("[%s limit %s]%s", Joiner.on(", ").join(args), node.getMaxRowCountPerPartition(), formatHash(node.getHashVariable())));
 
             nodeOutput.appendDetailsLine("%s := %s%s", node.getRowNumberVariable(), "row_number()", formatSourceLocation(node.getRowNumberVariable().getSourceLocation()));
@@ -760,7 +802,7 @@ public class PlanPrinter
             }
 
             NodeRepresentation nodeOutput = addNode(node,
-                    "RowNumber",
+                    format("RowNumber%s", node.isPartial() ? "Partial" : ""),
                     format("[%s]%s", Joiner.on(", ").join(args), formatHash(node.getHashVariable())));
             nodeOutput.appendDetailsLine("%s := %s%s", node.getRowNumberVariable(), "row_number()", formatSourceLocation(node.getRowNumberVariable().getSourceLocation()));
 
@@ -788,7 +830,13 @@ public class PlanPrinter
         @Override
         public Void visitValues(ValuesNode node, Void context)
         {
-            NodeRepresentation nodeOutput = addNode(node, "Values");
+            NodeRepresentation nodeOutput;
+            if (node.getValuesNodeLabel().isPresent()) {
+                nodeOutput = addNode(node, format("Values converted from TableScan[%s]", node.getValuesNodeLabel().get()));
+            }
+            else {
+                nodeOutput = addNode(node, "Values");
+            }
             for (List<RowExpression> row : node.getRows()) {
                 nodeOutput.appendDetailsLine("(" + row.stream().map(formatter::apply).collect(Collectors.joining(", ")) + ")");
             }
@@ -917,9 +965,13 @@ public class PlanPrinter
                 }
             }
 
+            if (!node.getTableConstraints().isEmpty()) {
+                nodeOutput.appendDetailsLine("Table Constraints: %s", node.getTableConstraints());
+            }
+
             TupleDomain<ColumnHandle> predicate = node.getCurrentConstraint();
             if (predicate == null) {
-                // This happens when printing the plan framgnet on worker for debug purpose
+                // This happens when printing the plan fragment on worker for debug purpose
                 nodeOutput.appendDetailsLine(":: PREDICATE INFORMATION UNAVAILABLE");
             }
             else if (predicate.isNone()) {
@@ -1266,6 +1318,11 @@ public class PlanPrinter
             return addNode(node, name, identifier, ImmutableList.of(node.getId()), children, ImmutableList.of());
         }
 
+        public NodeRepresentation addNode(PlanNode node, String name, List<PlanNode> children)
+        {
+            return addNode(node, name, "", ImmutableList.of(node.getId()), children, ImmutableList.of());
+        }
+
         public NodeRepresentation addNode(PlanNode rootNode, String name, String identifier, List<PlanNodeId> allNodes, List<PlanNode> children, List<PlanFragmentId> remoteSources)
         {
             List<PlanNodeId> childrenIds = children.stream().map(PlanNode::getId).collect(toImmutableList());
@@ -1294,6 +1351,17 @@ public class PlanPrinter
         }
     }
 
+    public static String getDynamicFilterAssignments(AbstractJoinNode node)
+    {
+        if (node.getDynamicFilters().isEmpty()) {
+            return "";
+        }
+        return format("dynamicFilterAssignments = %s",
+                node.getDynamicFilters().entrySet().stream()
+                        .map(filter -> filter.getValue() + " -> " + filter.getKey())
+                        .collect(Collectors.joining(", ", "{", "}")));
+    }
+
     private static String castToVarchar(Type type, Object value, FunctionAndTypeManager functionAndTypeManager, Session session)
     {
         if (value == null) {
@@ -1301,7 +1369,7 @@ public class PlanPrinter
         }
 
         try {
-            FunctionHandle cast = functionAndTypeManager.lookupCast(CAST, type.getTypeSignature(), VARCHAR.getTypeSignature());
+            FunctionHandle cast = functionAndTypeManager.lookupCast(CAST, type, VARCHAR);
             Slice coerced = (Slice) new InterpretedFunctionInvoker(functionAndTypeManager).invoke(cast, session.getSqlFunctionProperties(), value);
             return "\"" + coerced.toStringUtf8().replace("\"", "\\\"") + "\"";
         }

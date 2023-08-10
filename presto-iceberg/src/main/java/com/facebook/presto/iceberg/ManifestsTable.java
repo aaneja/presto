@@ -111,7 +111,7 @@ public class ManifestsTable
 
         Map<Integer, PartitionSpec> partitionSpecsById = icebergTable.specs();
 
-        snapshot.allManifests().forEach(file -> {
+        snapshot.allManifests(icebergTable.io()).forEach(file -> {
             pagesBuilder.beginRow();
             pagesBuilder.appendVarchar(file.path());
             pagesBuilder.appendBigint(file.length());
@@ -138,9 +138,9 @@ public class ManifestsTable
             BlockBuilder rowBuilder = singleArrayWriter.beginBlockEntry();
             BOOLEAN.writeBoolean(rowBuilder, summary.containsNull());
             VARCHAR.writeString(rowBuilder, field.transform().toHumanString(
-                    Conversions.fromByteBuffer(nestedType, summary.lowerBound())));
+                    nestedType, Conversions.fromByteBuffer(nestedType, summary.lowerBound())));
             VARCHAR.writeString(rowBuilder, field.transform().toHumanString(
-                    Conversions.fromByteBuffer(nestedType, summary.upperBound())));
+                    nestedType, Conversions.fromByteBuffer(nestedType, summary.upperBound())));
             singleArrayWriter.closeEntry();
         }
         arrayBlockBuilder.closeEntry();

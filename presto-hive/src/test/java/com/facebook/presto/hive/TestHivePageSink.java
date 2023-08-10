@@ -53,6 +53,7 @@ import org.testng.annotations.Test;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -116,11 +117,7 @@ public class TestHivePageSink
         File tempDir = Files.createTempDir();
         try {
             ExtendedHiveMetastore metastore = createTestingFileHiveMetastore(new File(tempDir, "metastore"));
-            for (HiveStorageFormat format : HiveStorageFormat.values()) {
-                if (format == HiveStorageFormat.CSV) {
-                    // CSV supports only unbounded VARCHAR type, which is not provided by lineitem
-                    continue;
-                }
+            for (HiveStorageFormat format : getSupportedHiveStorageFormats()) {
                 config.setHiveStorageFormat(format);
                 config.setCompressionCodec(NONE);
                 long uncompressedLength = writeTestFile(config, metastoreClientConfig, metastore, makeFileName(tempDir, config));
@@ -139,6 +136,14 @@ public class TestHivePageSink
         finally {
             deleteRecursively(tempDir.toPath(), ALLOW_INSECURE);
         }
+    }
+
+    protected List<HiveStorageFormat> getSupportedHiveStorageFormats()
+    {
+        // CSV supports only unbounded VARCHAR type, and Alpha does not support DML yet
+        return Arrays.stream(HiveStorageFormat.values())
+                .filter(format -> format != HiveStorageFormat.CSV && format != HiveStorageFormat.ALPHA)
+                .collect(toImmutableList());
     }
 
     private static String makeFileName(File tempDir, HiveClientConfig config)
@@ -227,15 +232,21 @@ public class TestHivePageSink
 
     private static ConnectorPageSource createPageSource(HiveTransactionHandle transaction, HiveClientConfig config, MetastoreClientConfig metastoreClientConfig, File outputFile)
     {
-        HiveSplit split = new HiveSplit(
-                SCHEMA_NAME,
-                TABLE_NAME,
-                "",
+        HiveFileSplit fileSplit = new HiveFileSplit(
                 "file:///" + outputFile.getAbsolutePath(),
                 0,
                 outputFile.length(),
                 outputFile.length(),
                 outputFile.lastModified(),
+                Optional.empty(),
+                ImmutableMap.of());
+
+        HiveSplit split = new HiveSplit(
+                fileSplit,
+                SCHEMA_NAME,
+                TABLE_NAME,
+                "",
+
                 new Storage(
                         StorageFormat.create(config.getHiveStorageFormat().getSerDe(), config.getHiveStorageFormat().getInputFormat(), config.getHiveStorageFormat().getOutputFormat()),
                         "location",
@@ -252,35 +263,36 @@ public class TestHivePageSink
                 TableToPartitionMapping.empty(),
                 Optional.empty(),
                 false,
-                Optional.empty(),
                 NO_CACHE_REQUIREMENT,
                 Optional.empty(),
-                ImmutableMap.of(),
                 ImmutableSet.of(),
                 SplitWeight.standard());
 
+        HiveTableLayoutHandle layoutHandle = new HiveTableLayoutHandle.Builder()
+                .setSchemaTableName(new SchemaTableName(SCHEMA_NAME, TABLE_NAME))
+                .setTablePath("path")
+                .setPartitionColumns(ImmutableList.of())
+                .setDataColumns(getColumnHandles().stream().map(column -> new Column(column.getName(), column.getHiveType(), Optional.empty(), Optional.empty())).collect(toImmutableList()))
+                .setTableParameters(ImmutableMap.of())
+                .setDomainPredicate(TupleDomain.all())
+                .setRemainingPredicate(TRUE_CONSTANT)
+                .setPredicateColumns(ImmutableMap.of())
+                .setPartitionColumnPredicate(TupleDomain.all())
+                .setBucketHandle(Optional.empty())
+                .setBucketFilter(Optional.empty())
+                .setPushdownFilterEnabled(false)
+                .setLayoutString("layout")
+                .setRequestedColumns(Optional.empty())
+                .setPartialAggregationsPushedDown(false)
+                .setAppendRowNumberEnabled(false)
+                .setPartitions(Optional.empty())
+                .setHiveTableHandle(Optional.empty())
+                .build();
         TableHandle tableHandle = new TableHandle(
                 new ConnectorId(HIVE_CATALOG),
                 new HiveTableHandle(SCHEMA_NAME, TABLE_NAME),
                 transaction,
-                Optional.of(new HiveTableLayoutHandle(
-                        new SchemaTableName(SCHEMA_NAME, TABLE_NAME),
-                        "path",
-                        ImmutableList.of(),
-                        getColumnHandles().stream()
-                                .map(column -> new Column(column.getName(), column.getHiveType(), Optional.empty(), Optional.empty()))
-                                .collect(toImmutableList()),
-                        ImmutableMap.of(),
-                        TupleDomain.all(),
-                        TRUE_CONSTANT,
-                        ImmutableMap.of(),
-                        TupleDomain.all(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        false,
-                        "layout",
-                        Optional.empty(),
-                        false)));
+                Optional.of(layoutHandle));
         HivePageSourceProvider provider = new HivePageSourceProvider(config, createTestHdfsEnvironment(config, metastoreClientConfig), getDefaultHiveRecordCursorProvider(config, metastoreClientConfig), getDefaultHiveBatchPageSourceFactories(config, metastoreClientConfig), getDefaultHiveSelectivePageSourceFactories(config, metastoreClientConfig), FUNCTION_AND_TYPE_MANAGER, ROW_EXPRESSION_SERVICE);
         return provider.createPageSource(transaction, getSession(config), split, tableHandle.getLayout().get(), ImmutableList.copyOf(getColumnHandles()), NON_CACHEABLE);
     }

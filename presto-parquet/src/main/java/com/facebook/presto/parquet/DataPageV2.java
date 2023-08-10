@@ -15,6 +15,7 @@ package com.facebook.presto.parquet;
 
 import io.airlift.slice.Slice;
 import org.apache.parquet.column.statistics.Statistics;
+import org.openjdk.jol.info.ClassLayout;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
@@ -22,6 +23,8 @@ import static java.util.Objects.requireNonNull;
 public class DataPageV2
         extends DataPage
 {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(DataPageV2.class).instanceSize();
+
     private final int rowCount;
     private final int nullCount;
     private final Slice repetitionLevels;
@@ -35,6 +38,7 @@ public class DataPageV2
             int rowCount,
             int nullCount,
             int valueCount,
+            long firstRowIndex,
             Slice repetitionLevels,
             Slice definitionLevels,
             ParquetEncoding dataEncoding,
@@ -43,7 +47,7 @@ public class DataPageV2
             Statistics<?> statistics,
             boolean isCompressed)
     {
-        super(repetitionLevels.length() + definitionLevels.length() + slice.length(), uncompressedSize, valueCount);
+        super(repetitionLevels.length() + definitionLevels.length() + slice.length(), uncompressedSize, valueCount, firstRowIndex);
         this.rowCount = rowCount;
         this.nullCount = nullCount;
         this.repetitionLevels = requireNonNull(repetitionLevels, "repetitionLevels slice is null");
@@ -79,6 +83,7 @@ public class DataPageV2
         return dataEncoding;
     }
 
+    @Override
     public Slice getSlice()
     {
         return slice;
@@ -92,6 +97,11 @@ public class DataPageV2
     public boolean isCompressed()
     {
         return isCompressed;
+    }
+
+    public long getRetainedSizeInBytes()
+    {
+        return INSTANCE_SIZE + repetitionLevels.getRetainedSize() + definitionLevels.getRetainedSize() + slice.getRetainedSize();
     }
 
     @Override
@@ -109,6 +119,7 @@ public class DataPageV2
                 .add("valueCount", valueCount)
                 .add("compressedSize", compressedSize)
                 .add("uncompressedSize", uncompressedSize)
+                .add("firstRowIndex", getFirstRowIndex())
                 .toString();
     }
 }

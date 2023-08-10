@@ -34,4 +34,8 @@ public interface Node
     boolean isCoordinator();
 
     boolean isResourceManager();
+
+    boolean isCatalogServer();
+
+    NodePoolType getPoolType();
 }

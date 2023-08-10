@@ -34,12 +34,17 @@ import org.apache.commons.math3.distribution.BetaDistribution;
 import org.apache.commons.math3.distribution.BinomialDistribution;
 import org.apache.commons.math3.distribution.CauchyDistribution;
 import org.apache.commons.math3.distribution.ChiSquaredDistribution;
+import org.apache.commons.math3.distribution.FDistribution;
+import org.apache.commons.math3.distribution.GammaDistribution;
+import org.apache.commons.math3.distribution.LaplaceDistribution;
 import org.apache.commons.math3.distribution.PoissonDistribution;
 import org.apache.commons.math3.distribution.WeibullDistribution;
 import org.apache.commons.math3.special.Erf;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.facebook.presto.common.type.Decimals.longTenToNth;
@@ -56,6 +61,7 @@ import static com.facebook.presto.common.type.UnscaledDecimal128Arithmetic.unsca
 import static com.facebook.presto.common.type.UnscaledDecimal128Arithmetic.unscaledDecimalToUnscaledLong;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.NUMERIC_VALUE_OUT_OF_RANGE;
 import static com.facebook.presto.spi.function.FunctionKind.SCALAR;
 import static com.facebook.presto.type.DecimalOperators.modulusScalarFunction;
@@ -91,6 +97,13 @@ public final class MathFunctions
                             .divide(BigInteger.valueOf(2))
                             .subtract(BigInteger.ONE));
         }
+    }
+
+    private static final String SECURE_RANDOM_ALGORITHM;
+
+    static {
+        String os = System.getProperty("os.name");
+        SECURE_RANDOM_ALGORITHM = os.startsWith("Windows") ? "SHA1PRNG" : "NativePRNGNonBlocking";
     }
 
     private MathFunctions() {}
@@ -685,7 +698,106 @@ public final class MathFunctions
         return ThreadLocalRandom.current().nextLong(value);
     }
 
-    @Description("inverse of normal cdf given a mean, std, and probability")
+    @Description("a cryptographically secure random number between 0 and 1 (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.DOUBLE)
+    public static double secure_random()
+    {
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.nextDouble();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("a cryptographically secure random number between lower and upper (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.DOUBLE)
+    public static double secure_random(@SqlType(StandardTypes.DOUBLE) double lower, @SqlType(StandardTypes.DOUBLE) double upper)
+    {
+        checkCondition(lower < upper, INVALID_FUNCTION_ARGUMENT, "upper bound must be greater than lower bound");
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.doubles(lower, upper)
+                    .findFirst()
+                    .getAsDouble();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("a cryptographically secure random number between lower and upper (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.TINYINT)
+    public static long secureRandomTinyint(@SqlType(StandardTypes.TINYINT) long lower, @SqlType(StandardTypes.TINYINT) long upper)
+    {
+        checkCondition(lower < upper, INVALID_FUNCTION_ARGUMENT, "upper bound must be greater than lower bound");
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.ints((int) lower, (int) upper)
+                    .findFirst()
+                    .getAsInt();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("a cryptographically secure random number between lower and upper (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.SMALLINT)
+    public static long secureRandomSmallint(@SqlType(StandardTypes.SMALLINT) long lower, @SqlType(StandardTypes.SMALLINT) long upper)
+    {
+        checkCondition(lower < upper, INVALID_FUNCTION_ARGUMENT, "upper bound must be greater than lower bound");
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.ints((int) lower, (int) upper)
+                    .findFirst()
+                    .getAsInt();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("a cryptographically secure random number between lower and upper (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.INTEGER)
+    public static long secureRandomInteger(@SqlType(StandardTypes.INTEGER) long lower, @SqlType(StandardTypes.INTEGER) long upper)
+    {
+        checkCondition(lower < upper, INVALID_FUNCTION_ARGUMENT, "upper bound must be greater than lower bound");
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.ints((int) lower, (int) upper)
+                    .findFirst()
+                    .getAsInt();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("a cryptographically secure random number between lower and upper (exclusive)")
+    @ScalarFunction(value = "secure_random", alias = "secure_rand", deterministic = false)
+    @SqlType(StandardTypes.BIGINT)
+    public static long secureRandomBigint(@SqlType(StandardTypes.BIGINT) long lower, @SqlType(StandardTypes.BIGINT) long upper)
+    {
+        checkCondition(lower < upper, INVALID_FUNCTION_ARGUMENT, "upper bound must be greater than lower bound");
+        try {
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+            return random.longs(lower, upper)
+                    .findFirst()
+                    .getAsLong();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new PrestoException(NOT_SUPPORTED, SECURE_RANDOM_ALGORITHM + " is not supported in your OS", e);
+        }
+    }
+
+    @Description("Inverse of normal cdf given a mean, std, and probability")
     @ScalarFunction
     @SqlType(StandardTypes.DOUBLE)
     public static double inverseNormalCdf(@SqlType(StandardTypes.DOUBLE) double mean, @SqlType(StandardTypes.DOUBLE) double sd, @SqlType(StandardTypes.DOUBLE) double p)
@@ -696,7 +808,7 @@ public final class MathFunctions
         return mean + sd * 1.4142135623730951 * Erf.erfInv(2 * p - 1);
     }
 
-    @Description("normal cdf given a mean, standard deviation, and value")
+    @Description("Normal cdf given a mean, standard deviation, and value")
     @ScalarFunction
     @SqlType(StandardTypes.DOUBLE)
     public static double normalCdf(
@@ -708,7 +820,7 @@ public final class MathFunctions
         return 0.5 * (1 + Erf.erf((value - mean) / (standardDeviation * Math.sqrt(2))));
     }
 
-    @Description("inverse of Beta cdf given a, b parameters and probability")
+    @Description("Inverse of Beta cdf given a, b parameters and probability")
     @ScalarFunction
     @SqlType(StandardTypes.DOUBLE)
     public static double inverseBetaCdf(
@@ -765,7 +877,7 @@ public final class MathFunctions
         return distribution.cumulativeProbability(value);
     }
 
-    @Description("inverse of ChiSquared cdf given df parameter and probability")
+    @Description("Inverse of ChiSquared cdf given df parameter and probability")
     @ScalarFunction
     @SqlType(StandardTypes.DOUBLE)
     public static double inverseChiSquaredCdf(
@@ -788,6 +900,93 @@ public final class MathFunctions
         checkCondition(value >= 0, INVALID_FUNCTION_ARGUMENT, "value must non-negative");
         checkCondition(df > 0, INVALID_FUNCTION_ARGUMENT, "df must be greater than 0");
         ChiSquaredDistribution distribution = new ChiSquaredDistribution(null, df, ChiSquaredDistribution.DEFAULT_INVERSE_ABSOLUTE_ACCURACY);
+        return distribution.cumulativeProbability(value);
+    }
+
+    @Description("Inverse of F cdf given numerator degrees of freedom (df1), denominator degrees of freedom (df2) parameters, and probability")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double inverseFCdf(
+            @SqlType(StandardTypes.DOUBLE) double df1,
+            @SqlType(StandardTypes.DOUBLE) double df2,
+            @SqlType(StandardTypes.DOUBLE) double p)
+    {
+        checkCondition(p >= 0 && p <= 1, INVALID_FUNCTION_ARGUMENT, "p must be in the interval [0, 1]");
+        checkCondition(df1 > 0, INVALID_FUNCTION_ARGUMENT, "numerator df must be greater than 0");
+        checkCondition(df2 > 0, INVALID_FUNCTION_ARGUMENT, "denominator df must be greater than 0");
+        FDistribution distribution = new FDistribution(null, df1, df2, FDistribution.DEFAULT_INVERSE_ABSOLUTE_ACCURACY);
+        return distribution.inverseCumulativeProbability(p);
+    }
+
+    @Description("F cdf given the numerator degrees of freedom (df1), denominator degrees of freedom (df2) parameters, and value")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double fCdf(
+            @SqlType(StandardTypes.DOUBLE) double df1,
+            @SqlType(StandardTypes.DOUBLE) double df2,
+            @SqlType(StandardTypes.DOUBLE) double value)
+    {
+        checkCondition(value >= 0, INVALID_FUNCTION_ARGUMENT, "value must non-negative");
+        checkCondition(df1 > 0, INVALID_FUNCTION_ARGUMENT, "numerator df must be greater than 0");
+        checkCondition(df2 > 0, INVALID_FUNCTION_ARGUMENT, "denominator df must be greater than 0");
+        FDistribution distribution = new FDistribution(null, df1, df2, FDistribution.DEFAULT_INVERSE_ABSOLUTE_ACCURACY);
+        return distribution.cumulativeProbability(value);
+    }
+
+    @Description("Inverse of Gamma cdf given shape and scale parameter and probability")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double inverseGammaCdf(
+            @SqlType(StandardTypes.DOUBLE) double shape,
+            @SqlType(StandardTypes.DOUBLE) double scale,
+            @SqlType(StandardTypes.DOUBLE) double p)
+    {
+        checkCondition(p >= 0 && p <= 1, INVALID_FUNCTION_ARGUMENT, "p must be in the interval [0, 1]");
+        checkCondition(shape > 0, INVALID_FUNCTION_ARGUMENT, "shape must be greater than 0");
+        checkCondition(scale > 0, INVALID_FUNCTION_ARGUMENT, "scale must be greater than 0");
+        GammaDistribution distribution = new GammaDistribution(null, shape, scale, GammaDistribution.DEFAULT_INVERSE_ABSOLUTE_ACCURACY);
+        return distribution.inverseCumulativeProbability(p);
+    }
+
+    @Description("Gamma cdf given the shape and scale parameter and value")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double gammaCdf(
+            @SqlType(StandardTypes.DOUBLE) double shape,
+            @SqlType(StandardTypes.DOUBLE) double scale,
+            @SqlType(StandardTypes.DOUBLE) double value)
+    {
+        checkCondition(value >= 0, INVALID_FUNCTION_ARGUMENT, "value must be greater than, or equal to, 0");
+        checkCondition(shape > 0, INVALID_FUNCTION_ARGUMENT, "shape must be greater than 0");
+        checkCondition(scale > 0, INVALID_FUNCTION_ARGUMENT, "scale must be greater than 0");
+        GammaDistribution distribution = new GammaDistribution(null, shape, scale, GammaDistribution.DEFAULT_INVERSE_ABSOLUTE_ACCURACY);
+        return distribution.cumulativeProbability(value);
+    }
+
+    @Description("Inverse of Laplace cdf given mean, scale parameters and probability")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double inverseLaplaceCdf(
+            @SqlType(StandardTypes.DOUBLE) double mean,
+            @SqlType(StandardTypes.DOUBLE) double scale,
+            @SqlType(StandardTypes.DOUBLE) double p)
+    {
+        checkCondition(scale > 0, INVALID_FUNCTION_ARGUMENT, "scale must be greater than 0");
+        checkCondition(p >= 0 && p <= 1, INVALID_FUNCTION_ARGUMENT, "p must be in the interval [0, 1]");
+        LaplaceDistribution distribution = new LaplaceDistribution(null, mean, scale);
+        return distribution.inverseCumulativeProbability(p);
+    }
+
+    @Description("Laplace cdf given mean, scale parameters and value")
+    @ScalarFunction
+    @SqlType(StandardTypes.DOUBLE)
+    public static double laplaceCdf(
+            @SqlType(StandardTypes.DOUBLE) double mean,
+            @SqlType(StandardTypes.DOUBLE) double scale,
+            @SqlType(StandardTypes.DOUBLE) double value)
+    {
+        checkCondition(scale > 0, INVALID_FUNCTION_ARGUMENT, "scale must be greater than 0");
+        LaplaceDistribution distribution = new LaplaceDistribution(null, mean, scale);
         return distribution.cumulativeProbability(value);
     }
 

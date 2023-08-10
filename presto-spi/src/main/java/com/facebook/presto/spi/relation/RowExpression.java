@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
+import java.util.List;
 import java.util.Optional;
 
 @JsonTypeInfo(
@@ -56,6 +57,8 @@ public abstract class RowExpression
 
     public abstract Type getType();
 
+    public abstract List<RowExpression> getChildren();
+
     @Override
     public abstract boolean equals(Object other);
 
@@ -66,4 +69,10 @@ public abstract class RowExpression
     public abstract String toString();
 
     public abstract <R, C> R accept(RowExpressionVisitor<R, C> visitor, C context);
+
+    /**
+     * @return Canonical form of RowExpression by removing non-critical information
+     * from the node, like source location. Does NOT canonicalize the child expressions.
+     */
+    public abstract RowExpression canonicalize();
 }

@@ -15,6 +15,7 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.common.predicate.TupleDomain;
 import com.facebook.presto.common.type.TypeManager;
+import com.facebook.presto.hive.cache.HiveCachingHdfsConfiguration;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
@@ -28,7 +29,6 @@ import javax.inject.Inject;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -50,34 +50,41 @@ public class GenericHiveRecordCursorProvider
     public Optional<RecordCursor> createRecordCursor(
             Configuration configuration,
             ConnectorSession session,
-            Path path,
-            long start,
-            long length,
-            long fileSize,
+            HiveFileSplit fileSplit,
             Properties schema,
             List<HiveColumnHandle> columns,
             TupleDomain<HiveColumnHandle> effectivePredicate,
             DateTimeZone hiveStorageTimeZone,
             TypeManager typeManager,
-            boolean s3SelectPushdownEnabled,
-            Map<String, String> customSplitInfo)
+            boolean s3SelectPushdownEnabled)
     {
         // make sure the FileSystem is created with the proper Configuration object
+        Path path = new Path(fileSplit.getPath());
         try {
+            if (!fileSplit.getCustomSplitInfo().isEmpty()) {
+                if (configuration instanceof HiveCachingHdfsConfiguration.CachingJobConf) {
+                    configuration = ((HiveCachingHdfsConfiguration.CachingJobConf) configuration).getConfig();
+                }
+                if (configuration instanceof CopyOnFirstWriteConfiguration) {
+                    configuration = ((CopyOnFirstWriteConfiguration) configuration).getConfig();
+                }
+            }
             this.hdfsEnvironment.getFileSystem(session.getUser(), path, configuration);
         }
         catch (IOException e) {
             throw new PrestoException(HIVE_FILESYSTEM_ERROR, "Failed getting FileSystem: " + path, e);
         }
 
+        Configuration actualConfiguration = configuration;
+
         RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
-                () -> HiveUtil.createRecordReader(configuration, path, start, length, schema, columns, customSplitInfo));
+                () -> HiveUtil.createRecordReader(actualConfiguration, path, fileSplit.getStart(), fileSplit.getLength(), schema, columns, fileSplit.getCustomSplitInfo()));
         return hdfsEnvironment.doAs(session.getUser(),
                 () -> Optional.of(new GenericHiveRecordCursor<>(
-                        configuration,
+                        actualConfiguration,
                         path,
                         genericRecordReader(recordReader),
-                        length,
+                        fileSplit.getLength(),
                         schema,
                         columns,
                         hiveStorageTimeZone,

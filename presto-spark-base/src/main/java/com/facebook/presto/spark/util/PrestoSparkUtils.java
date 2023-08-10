@@ -29,15 +29,19 @@ import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.airlift.units.Duration;
+import org.apache.spark.JavaFutureActionWrapper;
+import org.apache.spark.SimpleFutureAction;
 import org.apache.spark.SparkException;
 import org.apache.spark.api.java.JavaFutureAction;
 import scala.reflect.ClassTag;
+import scala.runtime.AbstractFunction1;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
@@ -59,7 +63,10 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 public class PrestoSparkUtils
 {
     private static final int COMPRESSION_LEVEL = 3; // default level
-    private PrestoSparkUtils() {}
+
+    private PrestoSparkUtils()
+    {
+    }
 
     public static PrestoSparkSerializedPage toPrestoSparkSerializedPage(SerializedPage serializedPage)
     {
@@ -170,7 +177,7 @@ public class PrestoSparkUtils
                 int outputOffset = output.arrayOffset() + output.position();
 
                 int written = compress(input.array(), inputOffset, input.remaining(), output.array(), outputOffset, output.remaining());
-                output.position(output.position() + written);
+                ((Buffer) output).position(output.position() + written);
             }
         };
     }
@@ -201,7 +208,7 @@ public class PrestoSparkUtils
                 int outputOffset = output.arrayOffset() + output.position();
 
                 int written = decompress(input.array(), inputOffset, input.remaining(), output.array(), outputOffset, output.remaining());
-                output.position(output.position() + written);
+                ((Buffer) output).position(output.position() + written);
             }
         };
     }
@@ -245,6 +252,20 @@ public class PrestoSparkUtils
                 action.cancel(true);
             }
         }
+    }
+
+    public static <T> T getActionResultWithTimeout(SimpleFutureAction<T> action, long timeout, TimeUnit timeUnit, Set<PrestoSparkServiceWaitTimeMetrics> waitTimeMetrics)
+            throws SparkException, TimeoutException
+    {
+        JavaFutureAction<T> javaFutureAction = new JavaFutureActionWrapper<>(action, new AbstractFunction1<T, T>()
+        {
+            @Override
+            public T apply(T v)
+            {
+                return v;
+            }
+        });
+        return getActionResultWithTimeout(javaFutureAction, timeout, timeUnit, waitTimeMetrics);
     }
 
     public static <T> ClassTag<T> classTag(Class<T> clazz)

@@ -16,7 +16,9 @@ package com.facebook.presto.tests;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.type.ArrayType;
 import com.facebook.presto.common.type.CharType;
+import com.facebook.presto.common.type.DateType;
 import com.facebook.presto.common.type.DecimalType;
+import com.facebook.presto.common.type.DistinctType;
 import com.facebook.presto.common.type.RowType;
 import com.facebook.presto.common.type.TimestampType;
 import com.facebook.presto.common.type.Type;
@@ -67,6 +69,7 @@ import static com.facebook.presto.common.type.Chars.isCharType;
 import static com.facebook.presto.common.type.DateType.DATE;
 import static com.facebook.presto.common.type.DoubleType.DOUBLE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
+import static com.facebook.presto.common.type.JsonType.JSON;
 import static com.facebook.presto.common.type.RealType.REAL;
 import static com.facebook.presto.common.type.SmallintType.SMALLINT;
 import static com.facebook.presto.common.type.TimeType.TIME;
@@ -77,6 +80,7 @@ import static com.facebook.presto.common.type.TinyintType.TINYINT;
 import static com.facebook.presto.common.type.UnknownType.UNKNOWN;
 import static com.facebook.presto.common.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.common.type.Varchars.isVarcharType;
+import static com.facebook.presto.operator.scalar.JsonFunctions.jsonParse;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static com.facebook.presto.tpch.TpchRecordSet.createTpchRecordSet;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -84,6 +88,8 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.padEnd;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Lists.newArrayList;
+import static io.airlift.slice.Slices.utf8Slice;
+import static io.airlift.tpch.TpchTable.CUSTOMER;
 import static io.airlift.tpch.TpchTable.LINE_ITEM;
 import static io.airlift.tpch.TpchTable.NATION;
 import static io.airlift.tpch.TpchTable.ORDERS;
@@ -175,6 +181,18 @@ public class H2QueryRunner
                 "  comment VARCHAR(23) NOT NULL\n" +
                 ")");
         insertRows(tpchMetadata, PART);
+
+        handle.execute(" CREATE TABLE customer (     \n" +
+                "    custkey BIGINT NOT NULL,         \n" +
+                "    name VARCHAR(25) NOT NULL,       \n" +
+                "    address VARCHAR(40) NOT NULL,    \n" +
+                "    nationkey BIGINT NOT NULL,       \n" +
+                "    phone VARCHAR(15) NOT NULL,      \n" +
+                "    acctbal DOUBLE NOT NULL,         \n" +
+                "    mktsegment VARCHAR(10) NOT NULL, \n" +
+                "    comment VARCHAR(117) NOT NULL    \n" +
+                " ) ");
+        insertRows(tpchMetadata, CUSTOMER);
     }
 
     private void insertRows(TpchMetadata tpchMetadata, TpchTable tpchTable)
@@ -254,6 +272,10 @@ public class H2QueryRunner
                     byte[] binary = resultSet.getBytes(position);
                     return resultSet.wasNull() ? null : binary;
                 }
+                else if (JSON.equals(type)) {
+                    String stringValue = resultSet.getString(position);
+                    return resultSet.wasNull() ? null : jsonParse(utf8Slice(stringValue)).toStringUtf8();
+                }
                 else if (DATE.equals(type)) {
                     // resultSet.getDate(i) doesn't work if JVM's zone skipped day being retrieved (e.g. 2011-12-30 and Pacific/Apia zone)
                     LocalDate dateValue = resultSet.getObject(position, LocalDate.class);
@@ -313,6 +335,9 @@ public class H2QueryRunner
                 else if (type instanceof TypeWithName) {
                     return getValue(((TypeWithName) type).getType(), resultSet, position);
                 }
+                else if (type instanceof DistinctType) {
+                    return getValue(((DistinctType) type).getBaseType(), resultSet, position);
+                }
                 else {
                     throw new AssertionError("unhandled type: " + type);
                 }
@@ -361,6 +386,10 @@ public class H2QueryRunner
             return Arrays.stream(values)
                     .map(v -> v == null ? null : ((Timestamp) v).toLocalDateTime())
                     .toArray();
+        }
+
+        if (elementType instanceof DateType) {
+            return Arrays.stream(values).map(v -> v == null ? null : ((Date) v).toLocalDate()).toArray();
         }
 
         return values;

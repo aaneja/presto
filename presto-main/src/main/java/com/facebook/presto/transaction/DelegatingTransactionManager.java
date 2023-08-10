@@ -14,12 +14,13 @@
 package com.facebook.presto.transaction;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.common.transaction.TransactionId;
 import com.facebook.presto.metadata.CatalogMetadata;
-import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.function.FunctionNamespaceManager;
 import com.facebook.presto.spi.function.FunctionNamespaceTransactionHandle;
+import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.spi.transaction.IsolationLevel;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -60,6 +61,12 @@ public class DelegatingTransactionManager
     public List<TransactionInfo> getAllTransactionInfos()
     {
         return delegate.getAllTransactionInfos();
+    }
+
+    @Override
+    public void tryRegisterTransaction(TransactionInfo transactionInfo)
+    {
+        delegate.tryRegisterTransaction(transactionInfo);
     }
 
     @Override

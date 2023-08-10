@@ -32,7 +32,6 @@ import io.airlift.slice.Slices;
 import io.airlift.units.DataSize;
 import org.testng.annotations.Test;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,6 +48,7 @@ import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.orc.AbstractOrcRecordReader.getDecryptionKeyMetadata;
 import static com.facebook.presto.orc.AbstractTestOrcReader.intsBetween;
 import static com.facebook.presto.orc.DwrfEncryptionInfo.createNodeToGroupMap;
+import static com.facebook.presto.orc.NoOpOrcWriterStats.NOOP_WRITER_STATS;
 import static com.facebook.presto.orc.NoopOrcAggregatedMemoryContext.NOOP_ORC_AGGREGATED_MEMORY_CONTEXT;
 import static com.facebook.presto.orc.OrcEncoding.DWRF;
 import static com.facebook.presto.orc.OrcReader.MAX_BATCH_SIZE;
@@ -69,7 +69,6 @@ import static com.facebook.presto.orc.metadata.OrcType.OrcTypeKind.STRUCT;
 import static com.facebook.presto.orc.metadata.Stream.StreamKind.DATA;
 import static com.facebook.presto.orc.metadata.Stream.StreamKind.ROW_INDEX;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.io.Resources.getResource;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
@@ -213,21 +212,21 @@ public class TestDecryption
     {
         List<Stream> unencryptedStreams = ImmutableList.of(
                 new Stream(3, ROW_INDEX, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(15L)),
-                new Stream(4, ROW_INDEX, 5, true),
+                new Stream(4, DEFAULT_SEQUENCE_ID, ROW_INDEX, 5, true),
                 new Stream(3, DATA, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(45L)),
-                new Stream(4, DATA, 5, true));
+                new Stream(4, DEFAULT_SEQUENCE_ID, DATA, 5, true));
 
         List<Stream> group1Streams = ImmutableList.of(
-                new Stream(0, ROW_INDEX, 5, true),
+                new Stream(0, DEFAULT_SEQUENCE_ID, ROW_INDEX, 5, true),
                 new Stream(5, ROW_INDEX, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(25L)),
                 new Stream(0, DATA, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(30L)),
                 new Stream(5, DATA, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(55L)));
 
         List<Stream> group2Streams = ImmutableList.of(
                 new Stream(1, ROW_INDEX, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(5L)),
-                new Stream(2, ROW_INDEX, 5, true),
+                new Stream(2, DEFAULT_SEQUENCE_ID, ROW_INDEX, 5, true),
                 new Stream(1, DATA, 5, true, DEFAULT_SEQUENCE_ID, Optional.of(35L)),
-                new Stream(2, DATA, 5, true));
+                new Stream(2, DEFAULT_SEQUENCE_ID, DATA, 5, true));
 
         Map<StreamId, DiskRange> actual = getDiskRanges(ImmutableList.of(unencryptedStreams, group1Streams, group2Streams));
 
@@ -476,7 +475,7 @@ public class TestDecryption
             throws Exception
     {
         OrcDataSource orcDataSource = new FileOrcDataSource(
-                new File(getResource("encrypted_2splits.dwrf").getFile()),
+                OrcReaderTestingUtils.getResourceFile("encrypted_2splits.dwrf"),
                 new DataSize(1, MEGABYTE),
                 new DataSize(1, MEGABYTE),
                 new DataSize(1, MEGABYTE),
@@ -487,13 +486,11 @@ public class TestDecryption
                 new StorageOrcFileTailSource(),
                 new StorageStripeMetadataSource(),
                 NOOP_ORC_AGGREGATED_MEMORY_CONTEXT,
-                new OrcReaderOptions(
-                        new DataSize(1, MEGABYTE),
-                        new DataSize(1, MEGABYTE),
-                        MAX_BLOCK_SIZE,
-                        false,
-                        false,
-                        false),
+                OrcReaderOptions.builder()
+                        .withMaxMergeDistance(new DataSize(1, MEGABYTE))
+                        .withTinyStripeThreshold(new DataSize(1, MEGABYTE))
+                        .withMaxBlockSize(MAX_BLOCK_SIZE)
+                        .build(),
                 false,
                 new DwrfEncryptionProvider(new UnsupportedEncryptionLibrary(), new TestingPlainKeyEncryptionLibrary()),
                 DwrfKeyProvider.of(ImmutableMap.of(0, Slices.utf8Slice("key"))),
@@ -619,7 +616,7 @@ public class TestDecryption
             throws Exception
     {
         try (TempFile tempFile = new TempFile()) {
-            writeOrcColumnsPresto(tempFile.getFile(), OrcTester.Format.DWRF, ZSTD, dwrfWriterEncryption, types, writtenValues, new OrcWriterStats());
+            writeOrcColumnsPresto(tempFile.getFile(), OrcTester.Format.DWRF, ZSTD, dwrfWriterEncryption, types, writtenValues, NOOP_WRITER_STATS);
 
             assertFileContentsPresto(
                     types,
@@ -762,7 +759,6 @@ public class TestDecryption
                 offset,
                 orcDataSource.getSize(),
                 HIVE_STORAGE_TIME_ZONE,
-                false,
                 new TestingHiveOrcAggregatedMemoryContext(),
                 Optional.empty(),
                 MAX_BATCH_SIZE);

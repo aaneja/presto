@@ -217,7 +217,7 @@ public class PickTableLayout
                             .collect(toImmutableSet())));
 
             if (layout.getLayout().getPredicate().isNone()) {
-                return Result.ofPlanNode(new ValuesNode(tableScanNode.getSourceLocation(), context.getIdAllocator().getNextId(), tableScanNode.getOutputVariables(), ImmutableList.of()));
+                return Result.ofPlanNode(new ValuesNode(tableScanNode.getSourceLocation(), context.getIdAllocator().getNextId(), tableScanNode.getOutputVariables(), ImmutableList.of(), Optional.empty()));
             }
 
             return Result.ofPlanNode(new TableScanNode(
@@ -226,6 +226,7 @@ public class PickTableLayout
                     layout.getLayout().getNewTableHandle(),
                     tableScanNode.getOutputVariables(),
                     tableScanNode.getAssignments(),
+                    tableScanNode.getTableConstraints(),
                     layout.getLayout().getPredicate(),
                     TupleDomain.all()));
         }
@@ -266,7 +267,7 @@ public class PickTableLayout
         // don't include non-deterministic predicates
         LogicalRowExpressions logicalRowExpressions = new LogicalRowExpressions(
                 new RowExpressionDeterminismEvaluator(metadata.getFunctionAndTypeManager()),
-                new FunctionResolution(metadata.getFunctionAndTypeManager()),
+                new FunctionResolution(metadata.getFunctionAndTypeManager().getFunctionAndTypeResolver()),
                 metadata.getFunctionAndTypeManager());
         RowExpression deterministicPredicate = logicalRowExpressions.filterDeterministicConjuncts(predicate);
         DomainTranslator.ExtractionResult<VariableReferenceExpression> decomposedPredicate = domainTranslator.fromPredicate(
@@ -299,7 +300,7 @@ public class PickTableLayout
             constraint = new Constraint<>(newDomain);
         }
         if (constraint.getSummary().isNone()) {
-            return new ValuesNode(node.getSourceLocation(), idAllocator.getNextId(), node.getOutputVariables(), ImmutableList.of());
+            return new ValuesNode(node.getSourceLocation(), idAllocator.getNextId(), node.getOutputVariables(), ImmutableList.of(), Optional.empty());
         }
 
         // Layouts will be returned in order of the connector's preference
@@ -312,7 +313,7 @@ public class PickTableLayout
                         .collect(toImmutableSet())));
 
         if (layout.getLayout().getPredicate().isNone()) {
-            return new ValuesNode(node.getSourceLocation(), idAllocator.getNextId(), node.getOutputVariables(), ImmutableList.of());
+            return new ValuesNode(node.getSourceLocation(), idAllocator.getNextId(), node.getOutputVariables(), ImmutableList.of(), Optional.empty());
         }
 
         TableScanNode tableScan = new TableScanNode(
@@ -321,6 +322,7 @@ public class PickTableLayout
                 layout.getLayout().getNewTableHandle(),
                 node.getOutputVariables(),
                 node.getAssignments(),
+                node.getTableConstraints(),
                 layout.getLayout().getPredicate(),
                 computeEnforced(newDomain, layout.getUnenforcedConstraint()));
 

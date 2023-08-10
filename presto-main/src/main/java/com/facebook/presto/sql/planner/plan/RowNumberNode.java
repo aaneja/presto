@@ -27,6 +27,7 @@ import javax.annotation.concurrent.Immutable;
 import java.util.List;
 import java.util.Optional;
 
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 @Immutable
@@ -37,6 +38,7 @@ public final class RowNumberNode
     private final List<VariableReferenceExpression> partitionBy;
     private final Optional<Integer> maxRowCountPerPartition;
     private final VariableReferenceExpression rowNumberVariable;
+    private final boolean partial;
     private final Optional<VariableReferenceExpression> hashVariable;
 
     @JsonCreator
@@ -47,9 +49,24 @@ public final class RowNumberNode
             @JsonProperty("partitionBy") List<VariableReferenceExpression> partitionBy,
             @JsonProperty("rowNumberVariable") VariableReferenceExpression rowNumberVariable,
             @JsonProperty("maxRowCountPerPartition") Optional<Integer> maxRowCountPerPartition,
+            @JsonProperty("partial") boolean partial,
             @JsonProperty("hashVariable") Optional<VariableReferenceExpression> hashVariable)
     {
-        super(sourceLocation, id);
+        this(sourceLocation, id, Optional.empty(), source, partitionBy, rowNumberVariable, maxRowCountPerPartition, partial, hashVariable);
+    }
+
+    public RowNumberNode(
+            Optional<SourceLocation> sourceLocation,
+            PlanNodeId id,
+            Optional<PlanNode> statsEquivalentPlanNode,
+            PlanNode source,
+            List<VariableReferenceExpression> partitionBy,
+            VariableReferenceExpression rowNumberVariable,
+            Optional<Integer> maxRowCountPerPartition,
+            boolean partial,
+            Optional<VariableReferenceExpression> hashVariable)
+    {
+        super(sourceLocation, id, statsEquivalentPlanNode);
 
         requireNonNull(source, "source is null");
         requireNonNull(partitionBy, "partitionBy is null");
@@ -57,10 +74,13 @@ public final class RowNumberNode
         requireNonNull(maxRowCountPerPartition, "maxRowCountPerPartition is null");
         requireNonNull(hashVariable, "hashVariable is null");
 
+        checkState(!partial || maxRowCountPerPartition.isPresent(), "RowNumberNode cannot be partial when maxRowCountPerPartition is not present");
+
         this.source = source;
         this.partitionBy = ImmutableList.copyOf(partitionBy);
         this.rowNumberVariable = rowNumberVariable;
         this.maxRowCountPerPartition = maxRowCountPerPartition;
+        this.partial = partial;
         this.hashVariable = hashVariable;
     }
 
@@ -73,10 +93,12 @@ public final class RowNumberNode
     @Override
     public List<VariableReferenceExpression> getOutputVariables()
     {
-        return ImmutableList.<VariableReferenceExpression>builder()
-                .addAll(source.getOutputVariables())
-                .add(rowNumberVariable)
-                .build();
+        ImmutableList.Builder<VariableReferenceExpression> output = ImmutableList.builder();
+        output.addAll(source.getOutputVariables());
+        if (!partial) {
+            output.add(rowNumberVariable);
+        }
+        return output.build();
     }
 
     @JsonProperty
@@ -104,6 +126,12 @@ public final class RowNumberNode
     }
 
     @JsonProperty
+    public boolean isPartial()
+    {
+        return partial;
+    }
+
+    @JsonProperty
     public Optional<VariableReferenceExpression> getHashVariable()
     {
         return hashVariable;
@@ -118,6 +146,12 @@ public final class RowNumberNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new RowNumberNode(getSourceLocation(), getId(), Iterables.getOnlyElement(newChildren), partitionBy, rowNumberVariable, maxRowCountPerPartition, hashVariable);
+        return new RowNumberNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), Iterables.getOnlyElement(newChildren), partitionBy, rowNumberVariable, maxRowCountPerPartition, partial, hashVariable);
+    }
+
+    @Override
+    public PlanNode assignStatsEquivalentPlanNode(Optional<PlanNode> statsEquivalentPlanNode)
+    {
+        return new RowNumberNode(getSourceLocation(), getId(), statsEquivalentPlanNode, source, partitionBy, rowNumberVariable, maxRowCountPerPartition, partial, hashVariable);
     }
 }

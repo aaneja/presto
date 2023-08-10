@@ -24,15 +24,15 @@ import com.facebook.presto.common.type.SmallintType;
 import com.facebook.presto.common.type.TinyintType;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.metadata.TableMetadata;
-import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.TableHandle;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.TableScanNode;
+import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.spi.statistics.ColumnStatistics;
 import com.facebook.presto.spi.statistics.DoubleRange;
 import com.facebook.presto.spi.statistics.Estimate;
@@ -49,7 +49,9 @@ import com.facebook.presto.sql.tree.DoubleLiteral;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.Node;
+import com.facebook.presto.sql.tree.NodeRef;
 import com.facebook.presto.sql.tree.NullLiteral;
+import com.facebook.presto.sql.tree.Parameter;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
@@ -94,7 +96,15 @@ public class ShowStatsRewrite
     private static final Expression NULL_VARCHAR = new Cast(new NullLiteral(), VARCHAR);
 
     @Override
-    public Statement rewrite(Session session, Metadata metadata, SqlParser parser, Optional<QueryExplainer> queryExplainer, Statement node, List<Expression> parameters, AccessControl accessControl, WarningCollector warningCollector)
+    public Statement rewrite(Session session,
+                             Metadata metadata,
+                             SqlParser parser,
+                             Optional<QueryExplainer> queryExplainer,
+                             Statement node,
+                             List<Expression> parameters,
+                             Map<NodeRef<Parameter>, Expression> parameterLookup,
+                             AccessControl accessControl,
+                             WarningCollector warningCollector)
     {
         return (Statement) new Visitor(metadata, session, parameters, queryExplainer, warningCollector).process(node, null);
     }
@@ -230,7 +240,7 @@ public class ShowStatsRewrite
         private TableHandle getTableHandle(ShowStats node, QualifiedName table)
         {
             QualifiedObjectName qualifiedTableName = createQualifiedObjectName(session, node, table);
-            return metadata.getTableHandle(session, qualifiedTableName)
+            return metadata.getMetadataResolver(session).getTableHandle(qualifiedTableName)
                     .orElseThrow(() -> new SemanticException(MISSING_TABLE, node, "Table %s not found", table));
         }
 

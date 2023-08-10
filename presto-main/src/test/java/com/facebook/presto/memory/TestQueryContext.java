@@ -139,13 +139,46 @@ public class TestQueryContext
     }
 
     @Test
+    public void testChecksTotalMemoryOnUserMemoryAllocationWithBroadcastEnable()
+    {
+        MemoryPool generalPool = new MemoryPool(GENERAL_POOL, new DataSize(10, BYTE));
+        try (LocalQueryRunner localQueryRunner = new LocalQueryRunner(TEST_SESSION)) {
+            QueryContext queryContext = new QueryContext(
+                    new QueryId("query"),
+                    new DataSize(10, BYTE), // user memory limit
+                    new DataSize(20, BYTE), // total memory limit
+                    new DataSize(10, BYTE),
+                    new DataSize(1, GIGABYTE),
+                    generalPool,
+                    new TestingGcMonitor(),
+                    localQueryRunner.getExecutor(),
+                    localQueryRunner.getScheduler(),
+                    new DataSize(0, BYTE),
+                    new SpillSpaceTracker(new DataSize(0, BYTE)),
+                    listJsonCodec(TaskMemoryReservationSummary.class));
+
+            queryContext.getQueryMemoryContext().initializeLocalMemoryContexts("test");
+            LocalMemoryContext systemMemoryContext = queryContext.getQueryMemoryContext().localSystemMemoryContext();
+            LocalMemoryContext userMemoryContext = queryContext.getQueryMemoryContext().localUserMemoryContext();
+            try {
+                systemMemoryContext.setBytes(15, true);
+                userMemoryContext.setBytes(6);
+            }
+            catch (ExceededMemoryLimitException e) {
+                assertTrue(e.getMessage().contains("Query exceeded per-node broadcast memory limit of 10B"));
+                assertEquals(generalPool.getReservedBytes(), 0);
+            }
+        }
+    }
+
+    @Test
     public void testMoveTaggedAllocations()
     {
         MemoryPool generalPool = new MemoryPool(GENERAL_POOL, new DataSize(10_000, BYTE));
         MemoryPool reservedPool = new MemoryPool(RESERVED_POOL, new DataSize(10_000, BYTE));
         QueryId queryId = new QueryId("query");
         QueryContext queryContext = createQueryContext(queryId, generalPool);
-        TaskStateMachine taskStateMachine = new TaskStateMachine(TaskId.valueOf("queryid.0.0.0"), TEST_EXECUTOR);
+        TaskStateMachine taskStateMachine = new TaskStateMachine(TaskId.valueOf("queryid.0.0.0.0"), TEST_EXECUTOR);
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
                 TEST_SESSION,

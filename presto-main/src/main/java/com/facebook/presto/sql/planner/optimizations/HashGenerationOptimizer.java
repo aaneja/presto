@@ -15,8 +15,8 @@ package com.facebook.presto.sql.planner.optimizations;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
-import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
+import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.Assignments;
@@ -28,10 +28,8 @@ import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.plan.UnionNode;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.RowExpression;
-import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.PartitioningScheme;
-import com.facebook.presto.sql.planner.PlanVariableAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
@@ -41,6 +39,7 @@ import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
+import com.facebook.presto.sql.planner.plan.MergeJoinNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
@@ -69,6 +68,9 @@ import java.util.function.Function;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.LOCAL;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.REMOTE;
+import static com.facebook.presto.sql.planner.PlannerUtils.HASH_CODE;
+import static com.facebook.presto.sql.planner.PlannerUtils.INITIAL_HASH_VALUE;
+import static com.facebook.presto.sql.planner.PlannerUtils.orNullHashCode;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.optimizations.SetOperationNodeUtils.fromListMultimap;
 import static com.facebook.presto.sql.planner.plan.ChildReplacer.replaceChildren;
@@ -77,8 +79,6 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 import static com.facebook.presto.sql.relational.Expressions.call;
 import static com.facebook.presto.sql.relational.Expressions.constant;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.isExpression;
-import static com.facebook.presto.type.TypeUtils.NULL_HASH_CODE;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -92,10 +92,8 @@ import static java.util.stream.Stream.concat;
 public class HashGenerationOptimizer
         implements PlanOptimizer
 {
-    public static final long INITIAL_HASH_VALUE = 0;
-    private static final String HASH_CODE = OperatorType.HASH_CODE.getFunctionName().getObjectName();
-
     private final FunctionAndTypeManager functionAndTypeManager;
+    private boolean isEnabledForTesting;
 
     public HashGenerationOptimizer(FunctionAndTypeManager functionAndTypeManager)
     {
@@ -103,15 +101,27 @@ public class HashGenerationOptimizer
     }
 
     @Override
-    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, PlanVariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public void setEnabledForTesting(boolean isSet)
+    {
+        isEnabledForTesting = isSet;
+    }
+
+    @Override
+    public boolean isEnabled(Session session)
+    {
+        return isEnabledForTesting || SystemSessionProperties.isOptimizeHashGenerationEnabled(session);
+    }
+
+    @Override
+    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
         requireNonNull(plan, "plan is null");
         requireNonNull(session, "session is null");
         requireNonNull(types, "types is null");
         requireNonNull(variableAllocator, "variableAllocator is null");
         requireNonNull(idAllocator, "idAllocator is null");
-        if (SystemSessionProperties.isOptimizeHashGenerationEnabled(session)) {
-            PlanWithProperties result = plan.accept(new Rewriter(idAllocator, variableAllocator, functionAndTypeManager), new HashComputationSet());
+        if (isEnabled(session)) {
+            PlanWithProperties result = new Rewriter(idAllocator, variableAllocator, functionAndTypeManager).accept(plan, new HashComputationSet());
             return result.getNode();
         }
         return plan;
@@ -121,10 +131,10 @@ public class HashGenerationOptimizer
             extends InternalPlanVisitor<PlanWithProperties, HashComputationSet>
     {
         private final PlanNodeIdAllocator idAllocator;
-        private final PlanVariableAllocator variableAllocator;
+        private final VariableAllocator variableAllocator;
         private final FunctionAndTypeManager functionAndTypeManager;
 
-        private Rewriter(PlanNodeIdAllocator idAllocator, PlanVariableAllocator variableAllocator, FunctionAndTypeManager functionAndTypeManager)
+        private Rewriter(PlanNodeIdAllocator idAllocator, VariableAllocator variableAllocator, FunctionAndTypeManager functionAndTypeManager)
         {
             this.idAllocator = requireNonNull(idAllocator, "idAllocator is null");
             this.variableAllocator = requireNonNull(variableAllocator, "variableAllocator is null");
@@ -165,7 +175,8 @@ public class HashGenerationOptimizer
         {
             Optional<HashComputation> groupByHash = Optional.empty();
             List<VariableReferenceExpression> groupingKeys = node.getGroupingKeys();
-            if (!node.isStreamable() && !canSkipHashGeneration(node.getGroupingKeys())) {
+            if (!node.isStreamable() && !node.isSegmentedAggregationEligible() && !canSkipHashGeneration(node.getGroupingKeys())) {
+                // todo: for segmented aggregation, add optimizations for the fields that need to compute hash
                 groupByHash = computeHash(groupingKeys, functionAndTypeManager);
             }
 
@@ -222,7 +233,7 @@ public class HashGenerationOptimizer
             // that's functionally dependent on the distinct field in the set of distinct fields of the new node to be able to propagate it downstream.
             // Currently, such precomputed hashes will be dropped by this operation.
             return new PlanWithProperties(
-                    new DistinctLimitNode(node.getSourceLocation(), node.getId(), child.getNode(), node.getLimit(), node.isPartial(), node.getDistinctVariables(), Optional.of(hashVariable)),
+                    new DistinctLimitNode(node.getSourceLocation(), node.getId(), child.getNode(), node.getLimit(), node.isPartial(), node.getDistinctVariables(), Optional.of(hashVariable), node.getTimeoutMillis()),
                     ImmutableMap.of(hashComputation.get(), hashVariable));
         }
 
@@ -270,6 +281,7 @@ public class HashGenerationOptimizer
                             node.getPartitionBy(),
                             node.getRowNumberVariable(),
                             node.getMaxRowCountPerPartition(),
+                            node.isPartial(),
                             Optional.of(hashVariable)),
                     child.getHashVariables());
         }
@@ -461,6 +473,18 @@ public class HashGenerationOptimizer
                             Optional.of(probeHashVariable),
                             Optional.of(indexHashVariable)),
                     allHashVariables);
+        }
+
+        @Override
+        public PlanWithProperties visitMergeJoin(MergeJoinNode node, HashComputationSet parentPreference)
+        {
+            PlanWithProperties left = planAndEnforce(node.getLeft(), new HashComputationSet(), true, new HashComputationSet());
+            PlanWithProperties right = planAndEnforce(node.getRight(), new HashComputationSet(), true, new HashComputationSet());
+            verify(left.getHashVariables().isEmpty(), "left side of the merge join should not include hash variables");
+            verify(right.getHashVariables().isEmpty(), "right side of the merge join should not include hash variables");
+            return new PlanWithProperties(
+                    replaceChildren(node, ImmutableList.of(left.getNode(), right.getNode())),
+                    ImmutableMap.of());
         }
 
         @Override
@@ -773,18 +797,26 @@ public class HashGenerationOptimizer
                 }
             }
 
-            ProjectNode projectNode = new ProjectNode(planWithProperties.node.getSourceLocation(), idAllocator.getNextId(), planWithProperties.getNode(), assignments.build(), LOCAL);
+            ProjectNode projectNode = new ProjectNode(planWithProperties.node.getSourceLocation(), idAllocator.getNextId(), planWithProperties.node.getStatsEquivalentPlanNode(), planWithProperties.getNode(), assignments.build(), LOCAL);
             return new PlanWithProperties(projectNode, outputHashVariables);
         }
 
         private PlanWithProperties plan(PlanNode node, HashComputationSet parentPreference)
         {
-            PlanWithProperties result = node.accept(this, parentPreference);
+            PlanWithProperties result = accept(node, parentPreference);
             checkState(
                     result.getNode().getOutputVariables().containsAll(result.getHashVariables().values()),
                     "Node %s declares hash variables not in the output",
                     result.getNode().getClass().getSimpleName());
-            return result;
+            return new PlanWithProperties(result.getNode().assignStatsEquivalentPlanNode(node.getStatsEquivalentPlanNode()), result.getHashVariables());
+        }
+
+        private PlanWithProperties accept(PlanNode node, HashComputationSet context)
+        {
+            PlanWithProperties result = node.accept(this, context);
+            return new PlanWithProperties(
+                    result.getNode().assignStatsEquivalentPlanNode(node.getStatsEquivalentPlanNode()),
+                    result.getHashVariables());
         }
     }
 
@@ -863,27 +895,6 @@ public class HashGenerationOptimizer
             return Optional.empty();
         }
         return Optional.of(new HashComputation(fields, functionAndTypeManager));
-    }
-
-    public static Optional<RowExpression> getHashExpression(FunctionAndTypeManager functionAndTypeManager, List<VariableReferenceExpression> variables)
-    {
-        if (variables.isEmpty()) {
-            return Optional.empty();
-        }
-
-        RowExpression result = constant(INITIAL_HASH_VALUE, BIGINT);
-        for (VariableReferenceExpression variable : variables) {
-            RowExpression hashField = call(functionAndTypeManager, HASH_CODE, BIGINT, variable);
-            hashField = orNullHashCode(hashField);
-            result = call(functionAndTypeManager, "combine_hash", BIGINT, result, hashField);
-        }
-        return Optional.of(result);
-    }
-
-    private static RowExpression orNullHashCode(RowExpression expression)
-    {
-        checkArgument(BIGINT.equals(expression.getType()), "expression should be BIGINT type");
-        return new SpecialFormExpression(expression.getSourceLocation(), SpecialFormExpression.Form.COALESCE, BIGINT, expression, constant(NULL_HASH_CODE, BIGINT));
     }
 
     private static class HashComputation
@@ -993,7 +1004,6 @@ public class HashGenerationOptimizer
     {
         Map<VariableReferenceExpression, VariableReferenceExpression> outputToInput = new HashMap<>();
         for (Map.Entry<VariableReferenceExpression, RowExpression> assignment : assignments.entrySet()) {
-            checkArgument(!isExpression(assignment.getValue()), "Cannot have OriginalExpression in assignments");
             if (assignment.getValue() instanceof VariableReferenceExpression) {
                 outputToInput.put(assignment.getKey(), (VariableReferenceExpression) assignment.getValue());
             }

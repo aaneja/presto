@@ -22,6 +22,7 @@ import com.facebook.presto.common.block.DictionaryBlock;
 import com.facebook.presto.common.block.RunLengthEncodedBlock;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.aggregation.GroupByIdBlock;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -40,8 +41,8 @@ import static com.facebook.presto.operator.SyntheticAddress.decodeSliceIndex;
 import static com.facebook.presto.operator.SyntheticAddress.encodeSyntheticAddress;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INSUFFICIENT_RESOURCES;
 import static com.facebook.presto.sql.gen.JoinCompiler.PagesHashStrategyFactory;
+import static com.facebook.presto.util.Failures.checkArgument;
 import static com.facebook.presto.util.HashCollisionsEstimator.estimateNumberOfHashCollisions;
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static io.airlift.slice.SizeOf.sizeOf;
@@ -261,6 +262,12 @@ public class MultiChannelGroupByHash
     public boolean contains(int position, Page page, int[] hashChannels)
     {
         long rawHash = hashStrategy.hashRow(position, page);
+        return contains(position, page, hashChannels, rawHash);
+    }
+
+    @Override
+    public boolean contains(int position, Page page, int[] hashChannels, long rawHash)
+    {
         int hashPosition = (int) getHashPosition(rawHash, mask);
 
         // look for a slot containing this key
@@ -380,14 +387,13 @@ public class MultiChannelGroupByHash
 
         // An estimate of how much extra memory is needed before we can go ahead and expand the hash table.
         // This includes the new capacity for groupAddressByHash, rawHashByHashPosition, groupIdsByHash, and groupAddressByGroupId as well as the size of the current page
-        preallocatedMemoryInBytes = (newCapacity - hashCapacity) * (long) (Long.BYTES + Integer.BYTES + Byte.BYTES) +
-                (calculateMaxFill(newCapacity) - maxFill) * Long.BYTES +
+        preallocatedMemoryInBytes = newCapacity * (long) (Long.BYTES + Integer.BYTES + Byte.BYTES) +
+                calculateMaxFill(newCapacity) * Long.BYTES +
                 currentPageSizeInBytes;
         if (!updateMemory.update()) {
             // reserved memory but has exceeded the limit
             return false;
         }
-        preallocatedMemoryInBytes = 0;
 
         expectedHashCollisions += estimateNumberOfHashCollisions(getGroupCount(), hashCapacity);
 
@@ -429,6 +435,10 @@ public class MultiChannelGroupByHash
         this.rawHashByHashPosition = rawHashes;
         this.groupIdsByHash = newValue;
         groupAddressByGroupId.ensureCapacity(maxFill);
+
+        preallocatedMemoryInBytes = 0;
+        // release temporary memory reservation
+        updateMemory.update();
         return true;
     }
 
@@ -590,9 +600,9 @@ public class MultiChannelGroupByHash
         public boolean process()
         {
             int positionCount = page.getPositionCount();
-            checkState(lastPosition < positionCount, "position count out of bound");
+            checkState(lastPosition <= positionCount, "position count out of bound");
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
@@ -637,9 +647,9 @@ public class MultiChannelGroupByHash
         public boolean process()
         {
             int positionCount = page.getPositionCount();
-            checkState(lastPosition < positionCount, "position count out of bound");
+            checkState(lastPosition <= positionCount, "position count out of bound");
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
@@ -683,7 +693,7 @@ public class MultiChannelGroupByHash
                 return true;
             }
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
@@ -726,7 +736,7 @@ public class MultiChannelGroupByHash
             checkState(lastPosition <= positionCount, "position count out of bound");
             checkState(!finished);
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
@@ -780,10 +790,10 @@ public class MultiChannelGroupByHash
         public boolean process()
         {
             int positionCount = page.getPositionCount();
-            checkState(lastPosition < positionCount, "position count out of bound");
+            checkState(lastPosition <= positionCount, "position count out of bound");
             checkState(!finished);
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
@@ -833,7 +843,7 @@ public class MultiChannelGroupByHash
                 return true;
             }
 
-            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;

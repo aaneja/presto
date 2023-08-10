@@ -102,7 +102,6 @@ import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
-import static java.util.Arrays.stream;
 import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -213,10 +212,10 @@ public abstract class AbstractTestParquetReader
     }
 
     @Test
-    public void testCustomSchemaArrayOfStucts()
+    public void testCustomSchemaArrayOfStructs()
             throws Exception
     {
-        MessageType customSchemaArrayOfStucts = parseMessageType("message ParquetSchema { " +
+        MessageType customSchemaArrayOfStructs = parseMessageType("message ParquetSchema { " +
                 "  optional group self (LIST) { " +
                 "    repeated group self_tuple { " +
                 "      optional int64 a; " +
@@ -235,11 +234,11 @@ public abstract class AbstractTestParquetReader
         Type structType = RowType.from(asList(field("a", BIGINT), field("b", BOOLEAN), field("c", VARCHAR)));
         tester.testSingleLevelArrayRoundTrip(
                 getStandardListObjectInspector(getStandardStructObjectInspector(structFieldNames, asList(javaLongObjectInspector, javaBooleanObjectInspector, javaStringObjectInspector))),
-                values, values, "self", new ArrayType(structType), Optional.of(customSchemaArrayOfStucts));
+                values, values, "self", new ArrayType(structType), Optional.of(customSchemaArrayOfStructs));
     }
 
     @Test
-    public void testSingleLevelSchemaArrayOfStucts()
+    public void testSingleLevelSchemaArrayOfStructs()
             throws Exception
     {
         Iterable<Long> aValues = limit(cycle(asList(1L, null, 3L, 5L, null, null, null, 7L, 11L, null, 13L, 17L)), 30_000);
@@ -475,7 +474,7 @@ public abstract class AbstractTestParquetReader
     }
 
     @Test
-    public void testMapOfArray()
+    public void testMapOfArrayValues()
             throws Exception
     {
         Iterable<List<Integer>> arrays = createNullableTestArrays(limit(cycle(asList(1, null, 3, 5, null, null, null, 7, 11, null, 13, 17)), 30_000));
@@ -485,6 +484,22 @@ public abstract class AbstractTestParquetReader
                 javaIntObjectInspector,
                 getStandardListObjectInspector(javaIntObjectInspector)),
                 values, values, mapType(INTEGER, new ArrayType(INTEGER)));
+    }
+
+    @Test
+    public void testMapOfArrayKeys()
+            throws Exception
+    {
+        Iterable<List<Integer>> mapKeys = createTestArrays(limit(cycle(asList(1, null, 3, 5, null, null, null, 7, 11, null, 13, 17)), 30_000));
+        Iterable<Integer> mapValues = intsBetween(0, 30_000);
+        Iterable<Map<List<Integer>, Integer>> testMaps = createTestMaps(mapKeys, mapValues);
+        tester.testRoundTrip(
+                getStandardMapObjectInspector(
+                        getStandardListObjectInspector(javaIntObjectInspector),
+                        javaIntObjectInspector),
+                testMaps,
+                testMaps,
+                mapType(new ArrayType(INTEGER), INTEGER));
     }
 
     @Test
@@ -888,7 +903,7 @@ public abstract class AbstractTestParquetReader
         ContiguousSet<Long> longValues = longsBetween(1_000_000, 1_001_000);
         ImmutableList.Builder<SqlTimestamp> expectedValues = new ImmutableList.Builder<>();
         for (Long value : longValues) {
-            expectedValues.add(new SqlTimestamp(value / 1000L, UTC_KEY));
+            expectedValues.add(new SqlTimestamp(value / 1000L, UTC_KEY, MILLISECONDS));
         }
         tester.testRoundTrip(javaTimestampObjectInspector, longValues, expectedValues.build(), TIMESTAMP, parquetSchema);
     }
@@ -901,7 +916,7 @@ public abstract class AbstractTestParquetReader
         ContiguousSet<Long> longValues = longsBetween(1_000_000, 1_001_000);
         ImmutableList.Builder<SqlTimestamp> expectedValues = new ImmutableList.Builder<>();
         for (Long value : longValues) {
-            expectedValues.add(new SqlTimestamp(value, UTC_KEY));
+            expectedValues.add(new SqlTimestamp(value, UTC_KEY, MILLISECONDS));
         }
         tester.testRoundTrip(javaLongObjectInspector, longValues, expectedValues.build(), TIMESTAMP, Optional.of(parquetSchema));
     }
@@ -1605,22 +1620,23 @@ public abstract class AbstractTestParquetReader
 
         try (ParquetTester.TempFile tempFile = new ParquetTester.TempFile("test", "parquet")) {
             Iterable<Integer> values = intsBetween(0, 10);
-            Iterator<?>[] readValues = stream(new Iterable<?>[] {values}).map(Iterable::iterator).toArray(size -> new Iterator<?>[size]);
 
             List<String> columnNames = singletonList("column1");
             List<Type> columnTypes = singletonList(INTEGER);
             writeParquetFileFromPresto(tempFile.getFile(),
                     columnTypes,
                     columnNames,
-                    readValues,
+                    new Iterable<?>[] {values},
                     10,
                     CompressionCodecName.GZIP);
+            long tempFileCreationTime = System.currentTimeMillis();
 
             testSingleRead(new Iterable<?>[] {values},
                     columnNames,
                     columnTypes,
                     parquetMetadataSource,
-                    tempFile.getFile());
+                    tempFile.getFile(),
+                    tempFileCreationTime);
             assertEquals(parquetFileMetadataCache.stats().missCount(), 1);
             assertEquals(parquetFileMetadataCache.stats().hitCount(), 0);
 
@@ -1628,7 +1644,8 @@ public abstract class AbstractTestParquetReader
                     columnNames,
                     columnTypes,
                     parquetMetadataSource,
-                    tempFile.getFile());
+                    tempFile.getFile(),
+                    tempFileCreationTime);
             assertEquals(parquetFileMetadataCache.stats().missCount(), 1);
             assertEquals(parquetFileMetadataCache.stats().hitCount(), 1);
 
@@ -1636,7 +1653,8 @@ public abstract class AbstractTestParquetReader
                     columnNames,
                     columnTypes,
                     parquetMetadataSource,
-                    tempFile.getFile());
+                    tempFile.getFile(),
+                    tempFileCreationTime);
             assertEquals(parquetFileMetadataCache.stats().missCount(), 1);
             assertEquals(parquetFileMetadataCache.stats().hitCount(), 2);
 
@@ -1646,7 +1664,8 @@ public abstract class AbstractTestParquetReader
                     columnNames,
                     columnTypes,
                     parquetMetadataSource,
-                    tempFile.getFile());
+                    tempFile.getFile(),
+                    tempFileCreationTime);
             assertEquals(parquetFileMetadataCache.stats().missCount(), 2);
             assertEquals(parquetFileMetadataCache.stats().hitCount(), 2);
 
@@ -1654,9 +1673,33 @@ public abstract class AbstractTestParquetReader
                     columnNames,
                     columnTypes,
                     parquetMetadataSource,
-                    tempFile.getFile());
+                    tempFile.getFile(),
+                    tempFileCreationTime);
             assertEquals(parquetFileMetadataCache.stats().missCount(), 2);
             assertEquals(parquetFileMetadataCache.stats().hitCount(), 3);
+
+            // change the modification time, and set it into a new HiveFileContext to invalidate this cache
+            // the cache will hit the first time(with its last modification time), but will be invalidated and not returned
+            // the real metadata result will be gotten from the delegate i.e. MetadataReader
+            long tempFileModificationTime = System.currentTimeMillis();
+            testSingleRead(new Iterable<?>[] {values},
+                    columnNames,
+                    columnTypes,
+                    parquetMetadataSource,
+                    tempFile.getFile(),
+                    tempFileModificationTime);
+            assertEquals(parquetFileMetadataCache.stats().missCount(), 2);
+            assertEquals(parquetFileMetadataCache.stats().hitCount(), 4);
+
+            //because the cache is invalidated above, the miss count will be incremented
+            testSingleRead(new Iterable<?>[] {values},
+                    columnNames,
+                    columnTypes,
+                    parquetMetadataSource,
+                    tempFile.getFile(),
+                    tempFileModificationTime);
+            assertEquals(parquetFileMetadataCache.stats().missCount(), 3);
+            assertEquals(parquetFileMetadataCache.stats().hitCount(), 4);
         }
     }
 

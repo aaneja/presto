@@ -33,20 +33,13 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.SimplePlanVisitor;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.WindowNode;
-import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.NodeRef;
-import com.facebook.presto.sql.tree.SymbolReference;
 
 import java.util.List;
 import java.util.Map;
 
 import static com.facebook.presto.common.type.UnknownType.UNKNOWN;
-import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.castToExpression;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.isExpression;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -93,6 +86,12 @@ public final class TypeValidator
                     checkFunctionSignature(node.getAggregations());
                     checkAggregation(node.getAggregations());
                     break;
+                case PARTIAL:
+                    verifyPartialAggregationTypes(node.getAggregations());
+                    break;
+                case INTERMEDIATE:
+                    verifyIntermediateAggregationTypes(node.getAggregations());
+                    break;
                 case FINAL:
                     checkFunctionSignature(node.getAggregations());
                     break;
@@ -118,20 +117,8 @@ public final class TypeValidator
 
             for (Map.Entry<VariableReferenceExpression, RowExpression> entry : node.getAssignments().entrySet()) {
                 RowExpression expression = entry.getValue();
-                if (isExpression(expression)) {
-                    if (castToExpression(expression) instanceof SymbolReference) {
-                        SymbolReference symbolReference = (SymbolReference) castToExpression(expression);
-                        verifyTypeSignature(entry.getKey(), types.get(symbolReference).getTypeSignature());
-                        continue;
-                    }
-                    Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypes(session, metadata, sqlParser, types, castToExpression(expression), emptyList(), warningCollector);
-                    Type actualType = expressionTypes.get(NodeRef.of(castToExpression(expression)));
-                    verifyTypeSignature(entry.getKey(), actualType.getTypeSignature());
-                }
-                else {
-                    Type actualType = expression.getType();
-                    verifyTypeSignature(entry.getKey(), actualType.getTypeSignature());
-                }
+                Type actualType = expression.getType();
+                verifyTypeSignature(entry.getKey(), actualType.getTypeSignature());
             }
 
             return null;
@@ -190,12 +177,10 @@ public final class TypeValidator
                         aggregation.getCall().getType().getTypeSignature());
                 int argumentSize = aggregation.getArguments().size();
                 int expectedArgumentSize = functionMetadata.getArgumentTypes().size();
-                checkArgument(argumentSize == functionMetadata.getArgumentTypes().size(),
+                checkArgument(argumentSize == expectedArgumentSize,
                         "Number of arguments is different from function signature: expected %s but got %s", expectedArgumentSize, argumentSize);
-                List<TypeSignature> argumentTypes = aggregation.getArguments()
-                        .stream()
-                        .map(argument -> isExpression(argument) ?
-                                UNKNOWN.getTypeSignature() : argument.getType().getTypeSignature())
+                List<TypeSignature> argumentTypes = aggregation.getArguments().stream()
+                        .map(argument -> argument.getType().getTypeSignature())
                         .collect(toImmutableList());
                 for (int i = 0; i < functionMetadata.getArgumentTypes().size(); i++) {
                     TypeSignature expected = functionMetadata.getArgumentTypes().get(i);
@@ -215,6 +200,35 @@ public final class TypeValidator
             FunctionAndTypeManager functionAndTypeManager = metadata.getFunctionAndTypeManager();
             if (!actual.equals(UNKNOWN.getTypeSignature()) && !functionAndTypeManager.isTypeOnlyCoercion(functionAndTypeManager.getType(actual), variable.getType())) {
                 checkArgument(variable.getType().getTypeSignature().equals(actual), "type of variable '%s' is expected to be %s, but the actual type is %s", variable.getName(), variable.getType(), actual);
+            }
+        }
+
+        private void verifyPartialAggregationTypes(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            for (Map.Entry<VariableReferenceExpression, Aggregation> entry : aggregations.entrySet()) {
+                Aggregation aggregation = entry.getValue();
+
+                TypeSignature actualTypeSig = aggregation.getCall().getType().getTypeSignature();
+                verifyTypeSignature(entry.getKey(), actualTypeSig);
+            }
+        }
+
+        private void verifyIntermediateAggregationTypes(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            for (Map.Entry<VariableReferenceExpression, Aggregation> entry : aggregations.entrySet()) {
+                Aggregation aggregation = entry.getValue();
+
+                int argumentSize = aggregation.getArguments().size();
+                checkArgument(argumentSize == 1,
+                        "Number of arguments for intermediate aggregation is expected to be 1, got %s", argumentSize);
+
+                TypeSignature expectedTypeSig = aggregation.getArguments().get(0).getType().getTypeSignature();
+                TypeSignature actualTypeSig = aggregation.getCall().getType().getTypeSignature();
+                checkArgument(
+                        expectedTypeSig.equals(actualTypeSig),
+                        "Return type for intermediate aggregation must be the same as the type of its single argument: expected '%s', got '%s'", expectedTypeSig, actualTypeSig);
+
+                verifyTypeSignature(entry.getKey(), actualTypeSig);
             }
         }
     }

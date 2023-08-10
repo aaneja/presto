@@ -19,9 +19,9 @@ import com.facebook.presto.execution.DDLDefinitionTask;
 import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.QueryStateTimer;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spark.classloader_interface.IPrestoSparkQueryExecution;
 import com.facebook.presto.spi.WarningCollector;
+import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionInfo;
 import com.facebook.presto.transaction.TransactionManager;
@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.facebook.airlift.concurrent.MoreFutures.getFutureValue;
+import static com.facebook.presto.spark.util.PrestoSparkFailureUtils.toPrestoSparkFailure;
 import static com.facebook.presto.util.Failures.toFailure;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -93,7 +94,7 @@ public class PrestoSparkDataDefinitionExecution<T extends Statement>
             Optional<ExecutionFailureInfo> failureInfo = Optional.of(toFailure(executionException));
             queryStateTimer.endQuery();
 
-            throw failureInfo.get().toFailure();
+            throw toPrestoSparkFailure(session, failureInfo.get());
         }
         return Collections.emptyList();
     }

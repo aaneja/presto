@@ -19,11 +19,14 @@ import com.facebook.presto.spi.ConstantProperty;
 import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.SortingProperty;
+import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.DistinctLimitNode;
 import com.facebook.presto.spi.plan.LimitNode;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
+import com.facebook.presto.spi.plan.OrderingScheme;
+import com.facebook.presto.spi.plan.OutputNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.spi.plan.TopNNode;
@@ -32,7 +35,6 @@ import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
-import com.facebook.presto.sql.planner.PlanVariableAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.optimizations.StreamPropertyDerivations.StreamProperties;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
@@ -43,7 +45,6 @@ import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
-import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
@@ -70,6 +71,8 @@ import static com.facebook.presto.SystemSessionProperties.getTaskWriterCount;
 import static com.facebook.presto.SystemSessionProperties.isDistributedSortEnabled;
 import static com.facebook.presto.SystemSessionProperties.isEnforceFixedDistributionForOutputOperator;
 import static com.facebook.presto.SystemSessionProperties.isJoinSpillingEnabled;
+import static com.facebook.presto.SystemSessionProperties.isQuickDistinctLimitEnabled;
+import static com.facebook.presto.SystemSessionProperties.isSegmentedAggregationEnabled;
 import static com.facebook.presto.SystemSessionProperties.isSpillEnabled;
 import static com.facebook.presto.SystemSessionProperties.isTableWriterMergeOperatorEnabled;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
@@ -115,24 +118,24 @@ public class AddLocalExchanges
     }
 
     @Override
-    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, PlanVariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
-        PlanWithProperties result = plan.accept(new Rewriter(variableAllocator, idAllocator, session), any());
+        PlanWithProperties result = new Rewriter(variableAllocator, idAllocator, session).accept(plan, any());
         return result.getNode();
     }
 
     private class Rewriter
             extends InternalPlanVisitor<PlanWithProperties, StreamPreferredProperties>
     {
-        private final PlanVariableAllocator variableAllocator;
+        private final VariableAllocator variableAllocator;
         private final PlanNodeIdAllocator idAllocator;
         private final Session session;
         private final TypeProvider types;
 
-        public Rewriter(PlanVariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, Session session)
+        public Rewriter(VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, Session session)
         {
             this.variableAllocator = variableAllocator;
-            this.types = variableAllocator.getTypes();
+            this.types = TypeProvider.viewOf(variableAllocator.getVariables());
             this.idAllocator = idAllocator;
             this.session = session;
         }
@@ -185,6 +188,20 @@ public class AddLocalExchanges
         @Override
         public PlanWithProperties visitSort(SortNode node, StreamPreferredProperties parentPreferences)
         {
+            // Remove sort if the child is already sorted and in a single stream
+            // TODO: extract to its own optimization after AddLocalExchanges once the
+            // constraint optimization framework is in a better state to be extended
+            PlanWithProperties childPlan = planAndEnforce(node.getSource(), any(), singleStream());
+            if (childPlan.getProperties().isSingleStream() && childPlan.getProperties().isOrdered()) {
+                OrderingScheme orderingScheme = node.getOrderingScheme();
+                List<LocalProperty<VariableReferenceExpression>> desiredProperties = orderingScheme.getOrderByVariables().stream()
+                        .map(variable -> new SortingProperty<>(variable, orderingScheme.getOrdering(variable)))
+                        .collect(toImmutableList());
+                if (LocalProperties.match(childPlan.getProperties().getLocalProperties(), desiredProperties).stream().noneMatch(Optional::isPresent)) {
+                    return childPlan;
+                }
+            }
+
             if (isDistributedSortEnabled(session)) {
                 PlanWithProperties sortPlan = planAndEnforceChildren(node, fixedParallelism(), fixedParallelism());
 
@@ -264,8 +281,17 @@ public class AddLocalExchanges
             StreamPreferredProperties requiredProperties;
             StreamPreferredProperties preferredProperties;
             if (node.isPartial()) {
-                requiredProperties = parentPreferences.withoutPreference().withDefaultParallelism(session);
-                preferredProperties = parentPreferences.withDefaultParallelism(session);
+                if (isQuickDistinctLimitEnabled(session)) {
+                    PlanWithProperties source = accept(node.getSource(), defaultParallelism(session));
+                    PlanWithProperties exchange = deriveProperties(
+                            roundRobinExchange(idAllocator.getNextId(), LOCAL, source.getNode()),
+                            source.getProperties());
+                    return rebaseAndDeriveProperties(node, ImmutableList.of(exchange));
+                }
+                else {
+                    requiredProperties = parentPreferences.withoutPreference().withDefaultParallelism(session);
+                    preferredProperties = parentPreferences.withDefaultParallelism(session);
+                }
             }
             else {
                 // a final changes the input organization completely, so we do not pass through parent preferences
@@ -321,9 +347,25 @@ public class AddLocalExchanges
             PlanWithProperties child = planAndEnforce(node.getSource(), childRequirements, childRequirements);
 
             List<VariableReferenceExpression> preGroupedSymbols = ImmutableList.of();
-            if (!LocalProperties.match(child.getProperties().getLocalProperties(), LocalProperties.grouped(groupingKeys)).get(0).isPresent()) {
+            // Logic in LocalProperties.match(localProperties, groupingKeys)
+            // 1. Extract the longest prefix of localProperties to a set that is a subset of groupingKeys
+            // 2. Iterate grouped-by keys and add the elements that's not in the set to the result
+            // Result would be a List of one element: Optional<GroupingProperty>, GroupingProperty would contain one/multiple elements from step 2
+            // Eg:
+            // [A, B] [(B, A)]     ->   List.of(Optional.empty())
+            // [A, B] [B]          ->   List.of(Optional.of(GroupingProperty(B)))
+            // [A, B] [A]          ->   List.of(Optional.empty())
+            // [A, B] [(A, C)]     ->   List.of(Optional.of(GroupingProperty(C)))
+            // [A, B] [(D, A, C)]  ->   List.of(Optional.of(GroupingProperty(D, C)))
+            List<Optional<LocalProperty<VariableReferenceExpression>>> matchResult = LocalProperties.match(child.getProperties().getLocalProperties(), LocalProperties.grouped(groupingKeys));
+            if (!matchResult.get(0).isPresent()) {
                 // !isPresent() indicates the property was satisfied completely
                 preGroupedSymbols = groupingKeys;
+            }
+            else if (matchResult.get(0).get().getColumns().size() < groupingKeys.size() && isSegmentedAggregationEnabled(session)) {
+                // If the result size = original groupingKeys size: all grouping keys are not pre-grouped, can't enable segmented aggregation
+                // Otherwise: partial grouping keys are pre-grouped, can enable segmented aggregation, the result represents the grouping keys that's not pre-grouped
+                preGroupedSymbols = groupingKeys.stream().filter(groupingKey -> !matchResult.get(0).get().getColumns().contains(groupingKey)).collect(toImmutableList());
             }
 
             AggregationNode result = new AggregationNode(
@@ -466,8 +508,11 @@ public class AddLocalExchanges
         @Override
         public PlanWithProperties visitRowNumber(RowNumberNode node, StreamPreferredProperties parentPreferences)
         {
-            // row number requires that all data be partitioned
-            StreamPreferredProperties requiredProperties = parentPreferences.withDefaultParallelism(session).withPartitioning(node.getPartitionBy());
+            StreamPreferredProperties requiredProperties = parentPreferences.withDefaultParallelism(session);
+            // final row number requires that all data be partitioned
+            if (!node.isPartial()) {
+                requiredProperties = requiredProperties.withPartitioning(node.getPartitionBy());
+            }
             return planAndEnforceChildren(node, requiredProperties, requiredProperties);
         }
 
@@ -534,7 +579,7 @@ public class AddLocalExchanges
                             fixedParallelism());
                 }
                 else {
-                    PlanWithProperties source = originalTableWriterNode.getSource().accept(this, defaultParallelism(session));
+                    PlanWithProperties source = accept(originalTableWriterNode.getSource(), defaultParallelism(session));
                     PlanWithProperties exchange = deriveProperties(
                             roundRobinExchange(idAllocator.getNextId(), LOCAL, source.getNode()),
                             source.getProperties());
@@ -557,7 +602,7 @@ public class AddLocalExchanges
                 }
             }
             else {
-                PlanWithProperties source = originalTableWriterNode.getSource().accept(this, defaultParallelism(session));
+                PlanWithProperties source = accept(originalTableWriterNode.getSource(), defaultParallelism(session));
                 PlanWithProperties exchange = deriveProperties(
                         partitionedExchange(
                                 idAllocator.getNextId(),
@@ -634,7 +679,7 @@ public class AddLocalExchanges
         {
             // Union is replaced with an exchange which does not retain streaming properties from the children
             List<PlanWithProperties> sourcesWithProperties = node.getSources().stream()
-                    .map(source -> source.accept(this, defaultParallelism(session)))
+                    .map(source -> accept(source, defaultParallelism(session)))
                     .collect(toImmutableList());
 
             List<PlanNode> sources = sourcesWithProperties.stream()
@@ -803,7 +848,7 @@ public class AddLocalExchanges
             checkArgument(preferredProperties.getPartitioningColumns().map(node.getOutputVariables()::containsAll).orElse(true));
 
             // plan the node using the preferred properties
-            PlanWithProperties result = node.accept(this, preferredProperties);
+            PlanWithProperties result = accept(node, preferredProperties);
 
             // enforce the required properties
             result = enforce(result, requiredProperties);
@@ -873,6 +918,14 @@ public class AddLocalExchanges
         private PlanWithProperties deriveProperties(PlanNode result, List<StreamProperties> inputProperties)
         {
             return new PlanWithProperties(result, StreamPropertyDerivations.deriveProperties(result, inputProperties, metadata, session, types, parser));
+        }
+
+        private PlanWithProperties accept(PlanNode node, StreamPreferredProperties context)
+        {
+            PlanWithProperties result = node.accept(this, context);
+            return new PlanWithProperties(
+                    result.getNode().assignStatsEquivalentPlanNode(node.getStatsEquivalentPlanNode()),
+                    result.getProperties());
         }
     }
 

@@ -104,6 +104,18 @@ Mathematical Functions
 
     Returns a pseudo-random number between 0 and n (exclusive).
 
+.. function:: secure_rand() -> double
+
+    This is an alias for :func:`secure_random()`.
+
+.. function:: secure_random() -> double
+
+    Returns a cryptographically secure random value in the range 0.0 <= x < 1.0.
+
+.. function:: secure_random(lower, upper) -> [same as input]
+
+    Returns a cryptographically secure random value in the range lower <= x < upper, where lower < upper.
+
 .. function:: round(x) -> [same as input]
 
     Returns ``x`` rounded to the nearest integer.
@@ -184,6 +196,22 @@ Probability Functions: cdf
     Compute the Chi-square cdf with given df (degrees of freedom) parameter:  P(N < value; df).
     The df parameter must be a positive real number, and value must be a non-negative real value (both of type DOUBLE).
 
+.. function:: f_cdf(df1, df2, value) -> double
+
+    Compute the F cdf with given df1 (numerator degrees of freedom) and df2 (denominator degrees of freedom) parameters:  P(N < value; df1, df2).
+    The numerator and denominator df parameters must be positive real numbers. The value must be a non-negative real number.
+
+.. function:: gamma_cdf(shape, scale, value) -> double
+
+    Compute the Gamma cdf with given shape and scale parameters:  P(N < value; shape, scale).
+    The shape and scale parameters must be positive real numbers.
+    The value must be a non-negative real number.
+
+.. function:: laplace_cdf(mean, scale, value) -> double
+
+    Compute the Laplace cdf with given mean and scale parameters:  P(N < value; mean, scale).
+    The mean and value must be real values and the scale parameter must be a positive value (all of type DOUBLE).
+
 .. function:: normal_cdf(mean, sd, value) -> double
 
     Compute the Normal cdf with given mean and standard deviation (sd):  P(N < value; mean, sd).
@@ -226,6 +254,25 @@ Probability Functions: inverse_cdf
 
     Compute the inverse of the Chi-square cdf with given df (degrees of freedom) parameter for the cumulative
     probability (p): P(N < n). The df parameter must be positive real values.
+    The probability p must lie on the interval [0, 1].
+
+.. function:: inverse_gamma_cdf(shape, scale, p) -> double
+
+    Compute the inverse of the Gamma cdf with given shape and scale parameters for the cumulative
+    probability (p): P(N < n). The shape and scale parameters must be positive real values.
+    The probability p must lie on the interval [0, 1].
+
+.. function:: inverse_f_cdf(df1, df2, p) -> double
+
+    Compute the inverse of the F cdf with a given df1 (numerator degrees of freedom) and df2 (denominator degrees of freedom) parameters 
+    for the cumulative probability (p): P(N < n). The numerator and denominator df parameters must be positive real numbers.
+    The probability p must lie on the interval [0, 1].
+
+.. function:: inverse_laplace_cdf(mean, scale, p) -> double
+
+    Compute the inverse of the Laplace cdf with given mean and scale parameters
+    for the cumulative probability (p): P(N < n). The mean must be
+    a real value and the scale must be a positive real value (both of type DOUBLE).
     The probability p must lie on the interval [0, 1].
 
 .. function:: inverse_normal_cdf(mean, sd, p) -> double

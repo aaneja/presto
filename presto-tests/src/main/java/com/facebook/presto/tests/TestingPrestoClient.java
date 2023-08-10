@@ -21,6 +21,7 @@ import com.facebook.presto.client.QueryStatusInfo;
 import com.facebook.presto.common.type.ArrayType;
 import com.facebook.presto.common.type.BigintEnumType;
 import com.facebook.presto.common.type.DecimalType;
+import com.facebook.presto.common.type.DistinctType;
 import com.facebook.presto.common.type.JsonType;
 import com.facebook.presto.common.type.MapType;
 import com.facebook.presto.common.type.RowType;
@@ -28,6 +29,7 @@ import com.facebook.presto.common.type.SqlTimestamp;
 import com.facebook.presto.common.type.SqlTimestampWithTimeZone;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.common.type.TypeWithName;
+import com.facebook.presto.common.type.UuidType;
 import com.facebook.presto.common.type.VarcharEnumType;
 import com.facebook.presto.common.type.VarcharType;
 import com.facebook.presto.server.testing.TestingPrestoServer;
@@ -49,6 +51,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,6 +66,7 @@ import static com.facebook.presto.common.type.Chars.isCharType;
 import static com.facebook.presto.common.type.DateType.DATE;
 import static com.facebook.presto.common.type.DoubleType.DOUBLE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
+import static com.facebook.presto.common.type.JsonType.JSON;
 import static com.facebook.presto.common.type.RealType.REAL;
 import static com.facebook.presto.common.type.SmallintType.SMALLINT;
 import static com.facebook.presto.common.type.TimeType.TIME;
@@ -222,7 +226,7 @@ public class TestingPrestoClient
             }
         }
         else if (TIMESTAMP.equals(type)) {
-            return SqlTimestamp.JSON_FORMATTER.parse((String) value, LocalDateTime::from);
+            return SqlTimestamp.JSON_MILLIS_FORMATTER.parse((String) value, LocalDateTime::from);
         }
         else if (TIMESTAMP_WITH_TIME_ZONE.equals(type)) {
             return timestampWithTimeZoneFormat.parse((String) value, ZonedDateTime::from);
@@ -248,6 +252,17 @@ public class TestingPrestoClient
                             e -> convertToRowValue(((MapType) type).getValueType(), e.getValue())));
         }
         else if (type instanceof RowType) {
+            if (value instanceof LinkedHashMap) {
+                // If value is an ordered map, use indexes instead of names.
+                List<Object> data = new ArrayList<>(((Map<String, Object>) value).values());
+                List<RowType.Field> fields = ((RowType) type).getFields();
+                List<Object> rowValues = new ArrayList<>();
+                for (int i = 0; i < fields.size(); i++) {
+                    rowValues.add(convertToRowValue(fields.get(i).getType(), data.get(i)));
+                }
+                return rowValues;
+            }
+
             Map<String, Object> data = (Map<String, Object>) value;
             RowType rowType = (RowType) type;
 
@@ -261,16 +276,25 @@ public class TestingPrestoClient
         else if (type instanceof JsonType) {
             return value;
         }
+        else if (type instanceof UuidType) {
+            return value;
+        }
         else if (type instanceof VarcharEnumType) {
             return value;
         }
         else if (type instanceof BigintEnumType) {
             return ((Number) value).longValue();
         }
+        else if (type instanceof DistinctType) {
+            return convertToRowValue(((DistinctType) type).getBaseType(), value);
+        }
         else if (type instanceof TypeWithName) {
             return convertToRowValue(((TypeWithName) type).getType(), value);
         }
         else if (type.getTypeSignature().getBase().equals("ObjectId")) {
+            return value;
+        }
+        else if (JSON.equals(type)) {
             return value;
         }
         else {

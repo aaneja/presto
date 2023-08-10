@@ -41,11 +41,17 @@ public class StaticSelector
     private static final String USER_VARIABLE = "USER";
     private static final String SOURCE_VARIABLE = "SOURCE";
 
+    private static final String SCHEMA_VARIABLE = "SCHEMA";
+    private static final String EMPTY_CRITERIA_STRING = "";
+
     private final Optional<Pattern> userRegex;
     private final Optional<Pattern> sourceRegex;
     private final Set<String> clientTags;
     private final Optional<SelectorResourceEstimate> selectorResourceEstimate;
     private final Optional<String> queryType;
+    private final Optional<Pattern> clientInfoRegex;
+
+    private final Optional<String> schema;
     private final ResourceGroupIdTemplate group;
     private final Set<String> variableNames;
 
@@ -55,6 +61,8 @@ public class StaticSelector
             Optional<List<String>> clientTags,
             Optional<SelectorResourceEstimate> selectorResourceEstimate,
             Optional<String> queryType,
+            Optional<Pattern> clientInfoRegex,
+            Optional<String> schema,
             ResourceGroupIdTemplate group)
     {
         this.userRegex = requireNonNull(userRegex, "userRegex is null");
@@ -63,9 +71,11 @@ public class StaticSelector
         this.clientTags = ImmutableSet.copyOf(clientTags.orElse(ImmutableList.of()));
         this.selectorResourceEstimate = requireNonNull(selectorResourceEstimate, "selectorResourceEstimate is null");
         this.queryType = requireNonNull(queryType, "queryType is null");
+        this.clientInfoRegex = requireNonNull(clientInfoRegex, "clientInfoRegex is null");
+        this.schema = requireNonNull(schema, "schema is null");
         this.group = requireNonNull(group, "group is null");
 
-        HashSet<String> variableNames = new HashSet<>(ImmutableList.of(USER_VARIABLE, SOURCE_VARIABLE));
+        HashSet<String> variableNames = new HashSet<>(ImmutableList.of(USER_VARIABLE, SOURCE_VARIABLE, SCHEMA_VARIABLE));
         userRegex.ifPresent(u -> addNamedGroups(u, variableNames));
         sourceRegex.ifPresent(s -> addNamedGroups(s, variableNames));
         this.variableNames = ImmutableSet.copyOf(variableNames);
@@ -96,18 +106,26 @@ public class StaticSelector
 
             addVariableValues(sourceRegex.get(), source, variables);
         }
-
         if (!clientTags.isEmpty() && !criteria.getTags().containsAll(clientTags)) {
             return Optional.empty();
         }
 
+        if (clientInfoRegex.isPresent() && !clientInfoRegex.get().matcher(criteria.getClientInfo().orElse(EMPTY_CRITERIA_STRING)).matches()) {
+            return Optional.empty();
+        }
         if (selectorResourceEstimate.isPresent() && !selectorResourceEstimate.get().match(criteria.getResourceEstimates())) {
             return Optional.empty();
         }
 
         if (queryType.isPresent()) {
-            String contextQueryType = criteria.getQueryType().orElse("");
+            String contextQueryType = criteria.getQueryType().orElse(EMPTY_CRITERIA_STRING);
             if (!queryType.get().equalsIgnoreCase(contextQueryType)) {
+                return Optional.empty();
+            }
+        }
+
+        if (schema.isPresent() && criteria.getSchema().isPresent()) {
+            if (criteria.getSchema().get().compareToIgnoreCase(schema.get()) != 0) {
                 return Optional.empty();
             }
         }
@@ -116,6 +134,8 @@ public class StaticSelector
 
         // Special handling for source, which is an optional field that is part of the standard variables
         variables.putIfAbsent(SOURCE_VARIABLE, criteria.getSource().orElse(""));
+
+        variables.putIfAbsent(SCHEMA_VARIABLE, criteria.getSchema().orElse(""));
 
         VariableMap map = new VariableMap(variables);
         ResourceGroupId id = group.expandTemplate(map);

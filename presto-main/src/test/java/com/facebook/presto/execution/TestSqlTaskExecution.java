@@ -124,7 +124,7 @@ public class TestSqlTaskExecution
     private static final ConnectorId CONNECTOR_ID = new ConnectorId("test");
     private static final ConnectorTransactionHandle TRANSACTION_HANDLE = TestingTransactionHandle.create();
     private static final Duration ASSERT_WAIT_TIMEOUT = new Duration(1, HOURS);
-    private static final TaskId TASK_ID = TaskId.valueOf("queryid.0.0.0");
+    private static final TaskId TASK_ID = TaskId.valueOf("queryid.0.0.0.0");
 
     @DataProvider
     public static Object[][] executionStrategies()
@@ -158,7 +158,7 @@ public class TestSqlTaskExecution
             //      |
             //    Scan
             //
-            // See #testComplex for all the bahaviors that are tested. Not all of them apply here.
+            // See #testComplex for all the behaviors that are tested. Not all of them apply here.
             TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     1,
@@ -864,8 +864,9 @@ public class TestSqlTaskExecution
             }
 
             @Override
-            public Supplier<Optional<UpdatablePageSource>> addSplit(Split split)
+            public Supplier<Optional<UpdatablePageSource>> addSplit(ScheduledSplit scheduledSplit)
             {
+                Split split = requireNonNull(scheduledSplit, "scheduledSplit is null").getSplit();
                 requireNonNull(split, "split is null");
                 checkState(this.split == null, "Table scan split already set");
 

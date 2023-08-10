@@ -22,10 +22,12 @@ import com.facebook.presto.execution.warnings.WarningCollectorConfig;
 import com.facebook.presto.memory.MemoryManagerConfig;
 import com.facebook.presto.memory.NodeMemoryConfig;
 import com.facebook.presto.metadata.SessionPropertyManager;
+import com.facebook.presto.server.security.SecurityConfig;
 import com.facebook.presto.spi.PrestoWarning;
 import com.facebook.presto.spi.StandardWarningCode;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spiller.NodeSpillConfig;
+import com.facebook.presto.sql.planner.CompilerConfig;
 import com.facebook.presto.tracing.TracingConfig;
 import org.testng.annotations.Test;
 
@@ -43,6 +45,7 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.DUPLICATE_RELAT
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_FUNCTION_NAME;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_LITERAL;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_OFFSET_ROW_COUNT;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_ORDER_BY;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_ORDINAL;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARAMETER_USAGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PROCEDURE_ARGUMENTS;
@@ -53,6 +56,7 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISMATCHED_SET_
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_ATTRIBUTE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_CATALOG;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_COLUMN;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_ORDER_BY;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_SCHEMA;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MULTIPLE_FIELDS_FROM_SUBQUERY;
@@ -91,7 +95,7 @@ public class TestAnalyzer
     private static void assertHasWarning(WarningCollector warningCollector, StandardWarningCode code, String match)
     {
         List<PrestoWarning> warnings = warningCollector.getWarnings();
-        assertEquals(warnings.size(), 1);
+        assertTrue(warnings.size() > 0);
         PrestoWarning warning = warnings.get(0);
         assertEquals(warning.getWarningCode(), code.toWarningCode());
         assertTrue(warning.getMessage().startsWith(match));
@@ -164,7 +168,9 @@ public class TestAnalyzer
                 new WarningCollectorConfig(),
                 new NodeSchedulerConfig(),
                 new NodeSpillConfig(),
-                new TracingConfig()))).build();
+                new TracingConfig(),
+                new CompilerConfig(),
+                new SecurityConfig()))).build();
         assertFails(session, WINDOW_FUNCTION_ORDERBY_LITERAL,
                 "SELECT SUM(x) OVER (PARTITION BY y ORDER BY 1) AS s\n" +
                         "FROM (values (1,10), (2, 10)) AS T(x, y)");
@@ -557,7 +563,9 @@ public class TestAnalyzer
                 new WarningCollectorConfig(),
                 new NodeSchedulerConfig(),
                 new NodeSpillConfig(),
-                new TracingConfig()))).build();
+                new TracingConfig(),
+                new CompilerConfig(),
+                new SecurityConfig()))).build();
         analyze(session, "SELECT a, b, c, d, e, f, g, h, i, j, k, SUM(l)" +
                 "FROM (VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))\n" +
                 "t (a, b, c, d, e, f, g, h, i, j, k, l)\n" +
@@ -656,7 +664,7 @@ public class TestAnalyzer
     }
 
     @Test
-    public void testInvalidWindowFrame()
+    public void testInvalidWindowFrameTypeRows()
     {
         assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ROWS UNBOUNDED FOLLOWING)");
         assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ROWS 2 FOLLOWING)");
@@ -665,15 +673,87 @@ public class TestAnalyzer
         assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ROWS BETWEEN CURRENT ROW AND 5 PRECEDING)");
         assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ROWS BETWEEN 2 FOLLOWING AND 5 PRECEDING)");
         assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ROWS BETWEEN 2 FOLLOWING AND CURRENT ROW)");
-        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (RANGE 2 PRECEDING)");
-        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (RANGE BETWEEN 2 PRECEDING AND CURRENT ROW)");
-        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (RANGE BETWEEN CURRENT ROW AND 5 FOLLOWING)");
-        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (RANGE BETWEEN 2 PRECEDING AND 5 FOLLOWING)");
 
         assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ROWS 5e-1 PRECEDING)");
         assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ROWS 'foo' PRECEDING)");
         assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ROWS BETWEEN CURRENT ROW AND 5e-1 FOLLOWING)");
         assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ROWS BETWEEN CURRENT ROW AND 'foo' FOLLOWING)");
+    }
+
+    @Test
+    public void testWindowFrameTypeRange()
+    {
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED FOLLOWING AND 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED FOLLOWING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED FOLLOWING AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED FOLLOWING AND UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED FOLLOWING AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CURRENT ROW AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CURRENT ROW AND UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE 5 PRECEDING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND 10 PRECEDING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND 3 PRECEDING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE CURRENT ROW) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CURRENT ROW AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CURRENT ROW AND 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND 1 FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND 10 FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 2 FOLLOWING AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+
+        // this should pass the analysis but fail during execution
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN -x PRECEDING AND 0 * x FOLLOWING) FROM (VALUES 1) T(x)");
+        analyze("SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN CAST(null AS BIGINT) PRECEDING AND CAST(null AS BIGINT) FOLLOWING) FROM (VALUES 1) T(x)");
+
+        assertFails(MISSING_ORDER_BY, "SELECT array_agg(x) OVER (RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM (VALUES 1) T(x)");
+
+        assertFails(INVALID_ORDER_BY, "SELECT array_agg(x) OVER (ORDER BY x DESC, x ASC RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM (VALUES 1) T(x)");
+
+        assertFails(TYPE_MISMATCH, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM (VALUES 'a') T(x)");
+
+        assertFails(TYPE_MISMATCH, "SELECT array_agg(x) OVER (ORDER BY x RANGE BETWEEN 'a' PRECEDING AND 'z' FOLLOWING) FROM (VALUES 1) T(x)");
+
+        assertFails(TYPE_MISMATCH, "SELECT array_agg(x) OVER (ORDER BY x RANGE INTERVAL '1' day PRECEDING) FROM (VALUES INTERVAL '1' year) T(x)");
+
+        // window frame other than <expression> PRECEDING or <expression> FOLLOWING has no requirements regarding window ORDER BY clause
+        // ORDER BY is not required
+        analyze("SELECT array_agg(x) OVER (RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        // multiple sort keys and sort keys of types other than numeric or datetime are allowed
+        analyze("SELECT array_agg(x) OVER (ORDER BY y, z RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) FROM (VALUES (1, 'text', true)) T(x, y, z)");
+    }
+
+    @Test
+    public void testInvalidWindowFrameTypeGroups()
+    {
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS UNBOUNDED FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS 2 FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN UNBOUNDED FOLLOWING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN CURRENT ROW AND UNBOUNDED PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN CURRENT ROW AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN 2 FOLLOWING AND 5 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(INVALID_WINDOW_FRAME, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN 2 FOLLOWING AND CURRENT ROW) FROM (VALUES 1) T(x)");
+
+        assertFails(MISSING_ORDER_BY, "SELECT rank() OVER (GROUPS 2 PRECEDING) FROM (VALUES 1) T(x)");
+
+        assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ORDER BY x GROUPS 5e-1 PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ORDER BY x GROUPS 'foo' PRECEDING) FROM (VALUES 1) T(x)");
+        assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN CURRENT ROW AND 5e-1 FOLLOWING) FROM (VALUES 1) T(x)");
+        assertFails(TYPE_MISMATCH, "SELECT rank() OVER (ORDER BY x GROUPS BETWEEN CURRENT ROW AND 'foo' FOLLOWING) FROM (VALUES 1) T(x)");
     }
 
     @Test
@@ -1113,6 +1193,66 @@ public class TestAnalyzer
         PrestoWarning warning = warnings.get(0);
         assertEquals(warning.getWarningCode(), PERFORMANCE_WARNING.toWarningCode());
         assertTrue(warning.getMessage().contains("COUNT(DISTINCT xxx)"));
+    }
+
+    @Test
+    public void testApproxDistinctPerformanceWarning()
+    {
+        WarningCollector warningCollector = analyzeWithWarnings("SELECT approx_distinct(a) FROM t1 GROUP BY b");
+        List<PrestoWarning> warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 0);
+
+        warningCollector = analyzeWithWarnings("SELECT approx_distinct(a, 0.0025E0) FROM t1 GROUP BY b");
+        warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 1);
+
+        // Ensure warning is the performance warning we expect
+        PrestoWarning warning = warnings.get(0);
+        assertEquals(warning.getWarningCode(), PERFORMANCE_WARNING.toWarningCode());
+        assertTrue(warning.getMessage().startsWith("approx_distinct"));
+
+        // Ensure warning is only issued for values lower than threshold
+        warningCollector = analyzeWithWarnings("SELECT approx_distinct(a, 0.0055E0) FROM t1 GROUP BY b");
+        warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 0);
+    }
+
+    @Test
+    public void testApproxSetPerformanceWarning()
+    {
+        WarningCollector warningCollector = analyzeWithWarnings("SELECT approx_set(a) FROM t1 GROUP BY b");
+        List<PrestoWarning> warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 0);
+
+        warningCollector = analyzeWithWarnings("SELECT approx_set(a, 0.0015E0) FROM t1 GROUP BY b");
+        warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 1);
+
+        // Ensure warning is the performance warning we expect
+        PrestoWarning warning = warnings.get(0);
+        assertEquals(warning.getWarningCode(), PERFORMANCE_WARNING.toWarningCode());
+        assertTrue(warning.getMessage().startsWith("approx_set"));
+
+        // Ensure warning is only issued for values lower than threshold
+        warningCollector = analyzeWithWarnings("SELECT approx_set(a, 0.0055E0) FROM t1 GROUP BY b");
+        warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 0);
+    }
+
+    @Test
+    public void testApproxDistinctAndApproxSetPerformanceWarning()
+    {
+        WarningCollector warningCollector = analyzeWithWarnings("SELECT approx_distinct(a, 0.0025E0), approx_set(a, 0.0013E0) FROM t1 GROUP BY b");
+        List<PrestoWarning> warnings = warningCollector.getWarnings();
+        assertEquals(warnings.size(), 2);
+
+        // Ensure warnings are the performance warnings we expect
+        PrestoWarning approxDistinctWarning = warnings.get(0);
+        assertEquals(approxDistinctWarning.getWarningCode(), PERFORMANCE_WARNING.toWarningCode());
+        assertTrue(approxDistinctWarning.getMessage().startsWith("approx_distinct"));
+        PrestoWarning approxSetWarning = warnings.get(1);
+        assertEquals(approxSetWarning.getWarningCode(), PERFORMANCE_WARNING.toWarningCode());
+        assertTrue(approxSetWarning.getMessage().startsWith("approx_set"));
     }
 
     @Test
@@ -1598,6 +1738,18 @@ public class TestAnalyzer
     }
 
     @Test
+    public void testUnnestInnerScalarAlias()
+    {
+        analyze("SELECT * FROM (SELECT array[1,2] a) a CROSS JOIN UNNEST(a) AS T(x)");
+    }
+
+    @Test(expectedExceptions = SemanticException.class, expectedExceptionsMessageRegExp = "line 1:37: Scalar subqueries in UNNEST are not supported")
+    public void testUnnestInnerScalar()
+    {
+        analyze("SELECT * FROM (SELECT 1) CROSS JOIN UNNEST((SELECT array[1])) AS T(x)");
+    }
+
+    @Test
     public void testJoinLateral()
     {
         analyze("SELECT * FROM (VALUES array[2, 2]) a(x) CROSS JOIN LATERAL(VALUES x)");
@@ -1622,6 +1774,77 @@ public class TestAnalyzer
     public void testReplaceTemporaryFunctionFails()
     {
         assertFails(NOT_SUPPORTED, "CREATE OR REPLACE TEMPORARY FUNCTION foo() RETURNS INT RETURN 1");
+    }
+
+    @Test
+    public void testJoinOnPerformanceWarnings()
+    {
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t1.b"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a LEFT JOIN t3 ON t1.a = t2.a"),
+                PERFORMANCE_WARNING, "line 1:67: JOIN ON condition(s) do not reference the joined table 't3' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 a1 LEFT JOIN t2 a2 ON a1.a = a2.a LEFT JOIN t3 a3  ON a1.a = a2.a"),
+                PERFORMANCE_WARNING, "line 1:77: JOIN ON condition(s) do not reference the joined table 't3' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 a1 LEFT JOIN t2 a2 ON a1.a = a2.a LEFT JOIN t3 a3  ON a3.a = a1.a"));
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a LEFT JOIN t3 ON t3.a = t1.a"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a LEFT JOIN t3 ON t3.a = 1"),
+                PERFORMANCE_WARNING, "line 1:67: JOIN ON condition(s) do not reference the joined table 't3' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a LEFT JOIN t3 ON t1.a = 1 AND t3.a = t1.a"));
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a LEFT JOIN t3 ON t3.a = t1.a"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 a1 LEFT JOIN t2 a2 ON a1.a = a2.a LEFT JOIN t3 a3  ON a3.a = a3.b"),
+                PERFORMANCE_WARNING, "line 1:77: JOIN ON condition(s) do not reference the joined table 't3' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 a1 LEFT JOIN t2 a2 ON a1.a = a2.a LEFT JOIN t3 a3  ON a3.a = a3.b AND a3.b = a1.b"));
+        assertHasWarning(analyzeWithWarnings("select * from t1 inner join ( select t2.a as t2_a, t3.a from t2 inner join t3 on t2.a=t3.a) al ON t1.a = t1.a"),
+                PERFORMANCE_WARNING, "line 1:104: JOIN ON condition(s) do not reference the joined relation and other relation in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertHasWarning(analyzeWithWarnings("select * from t1 inner join (select t2.a as t2_a, t3.a t3_a from t2 inner join t3 on t2.a=t3.a) ON t2_a = t3_a"),
+                PERFORMANCE_WARNING, "line 1:105: JOIN ON condition(s) do not reference the joined relation and other relation in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * from t1 inner join (select t2.a as t2_a, t3.a t3_a from t2 inner join t3 on t2.a=t3.a) ON t2_a = a"));
+        assertNoWarning(analyzeWithWarnings("select * from (select ARBITRARY(a) aa from t1 group by b) _ join (select w from t13)  ON w = aa"));
+        assertNoWarning(analyzeWithWarnings("with tt1 as (select a,b from t1) select b,x from t13 JOIN tt1 ON w = a"));
+        assertHasWarning(analyzeWithWarnings("with tt1 as (select a,b from t1) select b,x from t13 JOIN tt1 ON x = y"),
+                PERFORMANCE_WARNING, "line 1:68: JOIN ON condition(s) do not reference the joined table 'tt1' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a + 1"));
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a + t2.a = t1.b + t2.b"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t1.b + 1"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = t2.a * (t2.b + 1)"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t2 LEFT JOIN t1 ON t1.c = t1.a * (t1.b + 1)"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't1' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = -t2.a"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = -t1.b"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a = COALESCE(t1.a, t1.b, 1)"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a = COALESCE(t2.a, t2.b, 1)"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a = CASE WHEN t1.a > 0 THEN 1 WHEN t1.a < 0 THEN -1 WHEN t1.a = 0 THEN 0 END"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t1.a = CASE WHEN t1.a > 0 THEN 1 WHEN t1.a < 0 THEN -1 WHEN t1.a = 0 THEN 0 END"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a BETWEEN t1.a AND t1.b"));
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a BETWEEN t2.a AND t1.b"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t2 ON t2.a BETWEEN t2.a AND t2.b"),
+                PERFORMANCE_WARNING, "line 1:39: JOIN ON condition(s) do not reference the joined table 't2' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t6 LEFT JOIN t6 as t6_1 ON hamming_distance(t6.b, t6_1.b) > 0"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t6 LEFT JOIN t6 as t6_1 ON hamming_distance(t6.b, t6.b) > 0"),
+                PERFORMANCE_WARNING, "line 1:71: JOIN ON condition(s) do not reference the joined table 't6' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
+        assertNoWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t10 ON t1.a = t10.b.x.z"));
+        assertHasWarning(analyzeWithWarnings("select * FROM t1 LEFT JOIN t10 ON t10.a = t10.b.x.z"),
+                PERFORMANCE_WARNING, "line 1:41: JOIN ON condition(s) do not reference the joined table 't10' and other tables in the same expression that can cause " +
+                        "performance issues as it may lead to a cross join with filter");
     }
 
     @Test

@@ -19,6 +19,7 @@ import alluxio.client.quota.CacheScope;
 import com.facebook.presto.hive.HiveFileContext;
 import com.google.common.collect.ImmutableMap;
 
+import static com.facebook.presto.common.RuntimeUnit.NONE;
 import static java.util.Objects.requireNonNull;
 
 public class PrestoCacheContext
@@ -50,7 +51,7 @@ public class PrestoCacheContext
     @Override
     public void incrementCounter(String name, long value)
     {
-        hiveFileContext.incrementCounter(name, value);
+        hiveFileContext.incrementCounter(name, NONE, value);
     }
 
     public HiveFileContext getHiveFileContext()

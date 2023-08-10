@@ -29,8 +29,6 @@ import java.util.List;
 
 import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
 import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.asSymbolReference;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.castToRowExpression;
 import static com.google.common.base.Preconditions.checkState;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -67,7 +65,7 @@ final class PlanMatchingVisitor
         for (List<VariableReferenceExpression> inputs : allInputs) {
             Assignments.Builder assignments = Assignments.builder();
             for (int i = 0; i < inputs.size(); ++i) {
-                assignments.put(outputs.get(i), castToRowExpression(asSymbolReference(inputs.get(i))));
+                assignments.put(outputs.get(i), inputs.get(i));
             }
             newAliases = newAliases.updateAssignments(assignments.build());
         }
@@ -121,7 +119,7 @@ final class PlanMatchingVisitor
                 continue;
             }
 
-            // Try upMatching this node with the the aliases gathered from the source nodes.
+            // Try upMatching this node with the aliases gathered from the source nodes.
             SymbolAliases allSourceAliases = sourcesMatch.getAliases();
             MatchResult matchResult = pattern.detailMatches(node, statsProvider, session, metadata, allSourceAliases);
             if (matchResult.isMatch()) {

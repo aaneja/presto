@@ -64,10 +64,10 @@ public class TestDistributedQueryInfoResource
         this.resourceManager = resourceManager.get();
         coordinator1.getResourceGroupManager().get().addConfigurationManagerFactory(new FileResourceGroupConfigurationManagerFactory());
         coordinator1.getResourceGroupManager().get()
-                .setConfigurationManager("file", ImmutableMap.of("resource-groups.config-file", getResourceFilePath("resource_groups_config_simple.json")));
+                .forceSetConfigurationManager("file", ImmutableMap.of("resource-groups.config-file", getResourceFilePath("resource_groups_config_simple.json")));
         coordinator2.getResourceGroupManager().get().addConfigurationManagerFactory(new FileResourceGroupConfigurationManagerFactory());
         coordinator2.getResourceGroupManager().get()
-                .setConfigurationManager("file", ImmutableMap.of("resource-groups.config-file", getResourceFilePath("resource_groups_config_simple.json")));
+                .forceSetConfigurationManager("file", ImmutableMap.of("resource-groups.config-file", getResourceFilePath("resource_groups_config_simple.json")));
     }
 
     @AfterClass(alwaysRun = true)
@@ -102,10 +102,10 @@ public class TestDistributedQueryInfoResource
         }
     }
 
-    private void waitUntilCoordinatorsDiscoveredHealthyInRM(long timeoutInMilis)
+    private void waitUntilCoordinatorsDiscoveredHealthyInRM(long timeoutInMillis)
             throws TimeoutException, InterruptedException
     {
-        long deadline = System.currentTimeMillis() + timeoutInMilis;
+        long deadline = System.currentTimeMillis() + timeoutInMillis;
         while (System.currentTimeMillis() < deadline) {
             AllNodes allNodes = this.resourceManager.refreshNodes();
             if (allNodes.getActiveCoordinators().size() == COORDINATOR_COUNT) {
@@ -113,6 +113,6 @@ public class TestDistributedQueryInfoResource
             }
             sleep(100);
         }
-        throw new TimeoutException(format("one of the nodes is still missing after: %s ms", timeoutInMilis));
+        throw new TimeoutException(format("one of the nodes is still missing after: %s ms", timeoutInMillis));
     }
 }

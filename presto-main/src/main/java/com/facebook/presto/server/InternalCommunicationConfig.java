@@ -19,6 +19,9 @@ import com.facebook.airlift.configuration.ConfigSecuritySensitive;
 import com.facebook.drift.transport.netty.codec.Protocol;
 import io.airlift.units.DataSize;
 
+import javax.validation.constraints.AssertTrue;
+import javax.validation.constraints.NotNull;
+
 import java.util.Optional;
 
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -38,11 +41,15 @@ public class InternalCommunicationConfig
     private boolean kerberosUseCanonicalHostname = true;
     private boolean binaryTransportEnabled;
     private boolean thriftTransportEnabled;
+    private boolean taskInfoThriftTransportEnabled;
     private Protocol thriftProtocol = Protocol.BINARY;
     private DataSize maxTaskUpdateSize = new DataSize(16, MEGABYTE);
     private CommunicationProtocol taskCommunicationProtocol = CommunicationProtocol.HTTP;
     private CommunicationProtocol serverInfoCommunicationProtocol = CommunicationProtocol.HTTP;
     private boolean memoizeDeadNodesEnabled;
+    private String sharedSecret;
+
+    private boolean internalJwtEnabled;
 
     public boolean isHttpsRequired()
     {
@@ -179,6 +186,19 @@ public class InternalCommunicationConfig
         return this;
     }
 
+    public boolean isTaskInfoThriftTransportEnabled()
+    {
+        return taskInfoThriftTransportEnabled;
+    }
+
+    @Config("experimental.internal-communication.task-info-thrift-transport-enabled")
+    @ConfigDescription("Enables thrift encoding support for Task Info")
+    public InternalCommunicationConfig setTaskInfoThriftTransportEnabled(boolean taskInfoThriftTransportEnabled)
+    {
+        this.taskInfoThriftTransportEnabled = taskInfoThriftTransportEnabled;
+        return this;
+    }
+
     public Protocol getThriftProtocol()
     {
         return thriftProtocol;
@@ -248,5 +268,37 @@ public class InternalCommunicationConfig
     {
         this.memoizeDeadNodesEnabled = memoizeDeadNodesEnabled;
         return this;
+    }
+
+    @NotNull
+    public Optional<String> getSharedSecret()
+    {
+        return Optional.ofNullable(sharedSecret);
+    }
+
+    @ConfigSecuritySensitive
+    @Config("internal-communication.shared-secret")
+    public InternalCommunicationConfig setSharedSecret(String sharedSecret)
+    {
+        this.sharedSecret = sharedSecret;
+        return this;
+    }
+
+    public boolean isInternalJwtEnabled()
+    {
+        return internalJwtEnabled;
+    }
+
+    @Config("internal-communication.jwt.enabled")
+    public InternalCommunicationConfig setInternalJwtEnabled(boolean internalJwtEnabled)
+    {
+        this.internalJwtEnabled = internalJwtEnabled;
+        return this;
+    }
+
+    @AssertTrue(message = "When internal JWT(internal-communication.jwt.enabled) authentication is enabled, a shared secret(internal-communication.shared-secret) is required")
+    public boolean isRequiredSharedSecretSet()
+    {
+        return !isInternalJwtEnabled() || getSharedSecret().isPresent();
     }
 }

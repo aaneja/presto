@@ -15,15 +15,16 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.OrcFileWriterConfig.StreamLayoutType;
 import com.facebook.presto.orc.OrcWriterOptions;
-import com.facebook.presto.orc.StreamLayout.ByColumnSize;
-import com.facebook.presto.orc.StreamLayout.ByStreamSize;
 import com.facebook.presto.orc.metadata.DwrfStripeCacheMode;
+import com.facebook.presto.orc.writer.StreamLayoutFactory.ColumnSizeLayoutFactory;
+import com.facebook.presto.orc.writer.StreamLayoutFactory.StreamSizeLayoutFactory;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.units.DataSize;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
@@ -36,6 +37,7 @@ import static com.facebook.presto.orc.metadata.DwrfStripeCacheMode.INDEX_AND_FOO
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static io.airlift.units.DataSize.Unit.KILOBYTE;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
+import static java.lang.Math.toIntExact;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
@@ -55,9 +57,15 @@ public class TestOrcFileWriterConfig
                 .setStringStatisticsLimit(new DataSize(64, BYTE))
                 .setMaxCompressionBufferSize(new DataSize(256, KILOBYTE))
                 .setStreamLayoutType(BY_COLUMN_SIZE)
-                .setDwrfStripeCacheEnabled(false)
+                .setDwrfStripeCacheEnabled(true)
                 .setDwrfStripeCacheMaxSize(new DataSize(8, MEGABYTE))
-                .setDwrfStripeCacheMode(INDEX_AND_FOOTER));
+                .setDwrfStripeCacheMode(INDEX_AND_FOOTER)
+                .setCompressionLevel(Integer.MIN_VALUE)
+                .setIntegerDictionaryEncodingEnabled(false)
+                .setStringDictionaryEncodingEnabled(true)
+                .setStringDictionarySortingEnabled(true)
+                .setFlatMapWriterEnabled(false)
+                .setAddHostnameToFileMetadataEnabled(true));
     }
 
     @Test
@@ -72,9 +80,15 @@ public class TestOrcFileWriterConfig
                 .put("hive.orc.writer.string-statistics-limit", "17MB")
                 .put("hive.orc.writer.max-compression-buffer-size", "19MB")
                 .put("hive.orc.writer.stream-layout-type", "BY_STREAM_SIZE")
-                .put("hive.orc.writer.dwrf-stripe-cache-enabled", "true")
+                .put("hive.orc.writer.dwrf-stripe-cache-enabled", "false")
                 .put("hive.orc.writer.dwrf-stripe-cache-max-size", "10MB")
                 .put("hive.orc.writer.dwrf-stripe-cache-mode", "FOOTER")
+                .put("hive.orc.writer.compression-level", "5")
+                .put("hive.orc.writer.integer-dictionary-encoding-enabled", "true")
+                .put("hive.orc.writer.string-dictionary-encoding-enabled", "false")
+                .put("hive.orc.writer.string-dictionary-sorting-enabled", "false")
+                .put("hive.orc.writer.flat-map-writer-enabled", "true")
+                .put("hive.orc.writer.add-hostname-to-file-metadata-enabled", "false")
                 .build();
 
         OrcFileWriterConfig expected = new OrcFileWriterConfig()
@@ -86,9 +100,15 @@ public class TestOrcFileWriterConfig
                 .setStringStatisticsLimit(new DataSize(17, MEGABYTE))
                 .setMaxCompressionBufferSize(new DataSize(19, MEGABYTE))
                 .setStreamLayoutType(BY_STREAM_SIZE)
-                .setDwrfStripeCacheEnabled(true)
+                .setDwrfStripeCacheEnabled(false)
                 .setDwrfStripeCacheMaxSize(new DataSize(10, MEGABYTE))
-                .setDwrfStripeCacheMode(FOOTER);
+                .setDwrfStripeCacheMode(FOOTER)
+                .setCompressionLevel(5)
+                .setIntegerDictionaryEncodingEnabled(true)
+                .setStringDictionaryEncodingEnabled(false)
+                .setStringDictionarySortingEnabled(false)
+                .setFlatMapWriterEnabled(true)
+                .setAddHostnameToFileMetadataEnabled(false);
 
         assertFullMapping(properties, expected);
     }
@@ -114,6 +134,8 @@ public class TestOrcFileWriterConfig
         StreamLayoutType streamLayoutType = BY_STREAM_SIZE;
         DataSize dwrfStripeCacheMaxSize = new DataSize(4, MEGABYTE);
         DwrfStripeCacheMode dwrfStripeCacheMode = INDEX;
+        int compressionLevel = 5;
+        boolean flatMapWriterEnabled = true;
 
         OrcFileWriterConfig config = new OrcFileWriterConfig()
                 .setStripeMinSize(stripeMinSize)
@@ -126,7 +148,9 @@ public class TestOrcFileWriterConfig
                 .setStreamLayoutType(streamLayoutType)
                 .setDwrfStripeCacheEnabled(false)
                 .setDwrfStripeCacheMaxSize(dwrfStripeCacheMaxSize)
-                .setDwrfStripeCacheMode(dwrfStripeCacheMode);
+                .setDwrfStripeCacheMode(dwrfStripeCacheMode)
+                .setCompressionLevel(5)
+                .setFlatMapWriterEnabled(flatMapWriterEnabled);
 
         assertEquals(stripeMinSize, config.getStripeMinSize());
         assertEquals(stripeMaxSize, config.getStripeMaxSize());
@@ -139,19 +163,22 @@ public class TestOrcFileWriterConfig
         assertFalse(config.isDwrfStripeCacheEnabled());
         assertEquals(dwrfStripeCacheMaxSize, config.getDwrfStripeCacheMaxSize());
         assertEquals(dwrfStripeCacheMode, config.getDwrfStripeCacheMode());
+        assertEquals(compressionLevel, config.getCompressionLevel());
+        assertEquals(flatMapWriterEnabled, config.isFlatMapWriterEnabled());
 
         assertNotSame(config.toOrcWriterOptionsBuilder(), config.toOrcWriterOptionsBuilder());
         OrcWriterOptions options = config.toOrcWriterOptionsBuilder().build();
 
-        assertEquals(stripeMinSize, options.getStripeMinSize());
-        assertEquals(stripeMaxSize, options.getStripeMaxSize());
-        assertEquals(stripeMaxRowCount, options.getStripeMaxRowCount());
+        assertEquals(toIntExact(stripeMinSize.toBytes()), options.getFlushPolicy().getStripeMinBytes());
+        assertEquals(toIntExact(stripeMaxSize.toBytes()), options.getFlushPolicy().getStripeMaxBytes());
+        assertEquals(stripeMaxRowCount, options.getFlushPolicy().getStripeMaxRowCount());
         assertEquals(rowGroupMaxRowCount, options.getRowGroupMaxRowCount());
         assertEquals(dictionaryMaxMemory, options.getDictionaryMaxMemory());
         assertEquals(stringStatisticsLimit, options.getMaxStringStatisticsLimit());
         assertEquals(maxCompressionBufferSize, options.getMaxCompressionBufferSize());
-        assertTrue(options.getStreamLayout() instanceof ByStreamSize);
+        assertTrue(options.getStreamLayoutFactory() instanceof StreamSizeLayoutFactory);
         assertEquals(Optional.empty(), options.getDwrfStripeCacheOptions());
+        assertEquals(OptionalInt.of(compressionLevel), options.getCompressionLevel());
     }
 
     @Test
@@ -161,10 +188,30 @@ public class TestOrcFileWriterConfig
 
         config.setStreamLayoutType(BY_STREAM_SIZE);
         OrcWriterOptions options = config.toOrcWriterOptionsBuilder().build();
-        assertTrue(options.getStreamLayout() instanceof ByStreamSize);
+        assertTrue(options.getStreamLayoutFactory() instanceof StreamSizeLayoutFactory);
 
         config.setStreamLayoutType(BY_COLUMN_SIZE);
         options = config.toOrcWriterOptionsBuilder().build();
-        assertTrue(options.getStreamLayout() instanceof ByColumnSize);
+        assertTrue(options.getStreamLayoutFactory() instanceof ColumnSizeLayoutFactory);
+    }
+
+    @Test
+    public void testDefaultCompressionLevel()
+    {
+        OrcFileWriterConfig config = new OrcFileWriterConfig();
+        OrcWriterOptions options = config.toOrcWriterOptionsBuilder().build();
+
+        assertEquals(OptionalInt.empty(), options.getCompressionLevel());
+    }
+
+    @Test
+    public void testAddHostnameToFileMetadata()
+    {
+        OrcFileWriterConfig config = new OrcFileWriterConfig();
+        config.setAddHostnameToFileMetadataEnabled(false);
+        assertFalse(config.isAddHostnameToFileMetadataEnabled());
+
+        config.setAddHostnameToFileMetadataEnabled(true);
+        assertTrue(config.isAddHostnameToFileMetadataEnabled());
     }
 }

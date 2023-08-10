@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner;
 
+import com.facebook.presto.Session;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
@@ -25,6 +26,10 @@ import org.testng.annotations.Test;
 import java.util.Optional;
 
 import static com.facebook.presto.SystemSessionProperties.ENABLE_DYNAMIC_FILTERING;
+import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
+import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.PARTITIONED;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyNot;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJoinClause;
@@ -38,6 +43,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.semiJo
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
+import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 
 public class TestDynamicFilter
         extends BasePlanTest
@@ -59,6 +65,37 @@ public class TestDynamicFilter
                                 ImmutableList.of(equiJoinClause("ORDERS_OK", "LINEITEM_OK")),
                                 project(tableScan("orders", ImmutableMap.of("ORDERS_OK", "orderkey"))),
                                 exchange(project(tableScan("lineitem", ImmutableMap.of("LINEITEM_OK", "orderkey")))))));
+    }
+
+    @Test
+    public void testRightEquiJoin()
+    {
+        assertPlan("SELECT o.orderkey FROM orders o RIGHT JOIN lineitem l ON l.orderkey = o.orderkey",
+                anyTree(
+                        join(
+                                RIGHT,
+                                ImmutableList.of(equiJoinClause("ORDERS_OK", "LINEITEM_OK")),
+                                anyTree(
+                                        tableScan("orders", ImmutableMap.of("ORDERS_OK", "orderkey"))),
+                                exchange(
+                                        project(
+                                                tableScan("lineitem", ImmutableMap.of("LINEITEM_OK", "orderkey")))))));
+    }
+
+    @Test
+    public void testRightEquiJoinWithLeftExpression()
+    {
+        assertPlan("SELECT o.orderkey FROM orders o RIGHT JOIN lineitem l ON l.orderkey + 1 = o.orderkey",
+                anyTree(
+                        join(
+                                RIGHT,
+                                ImmutableList.of(equiJoinClause("ORDERS_OK", "expr")),
+                                anyTree(
+                                        tableScan("orders", ImmutableMap.of("ORDERS_OK", "orderkey"))),
+                                anyTree(
+                                        project(
+                                                ImmutableMap.of("expr", expression("LINEITEM_OK + BIGINT '1'")),
+                                                tableScan("lineitem", ImmutableMap.of("LINEITEM_OK", "orderkey")))))));
     }
 
     @Test
@@ -91,6 +128,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT o.orderkey FROM orders o, lineitem l WHERE l.orderkey = o.orderkey",
+                noJoinReordering(),
                 anyTree(
                         join(
                                 INNER,
@@ -108,6 +146,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT o.orderkey FROM orders o, lineitem l WHERE cast(l.orderkey as int) = cast(o.orderkey as int)",
+                noJoinReordering(),
                 anyTree(
                         node(
                                 JoinNode.class,
@@ -124,6 +163,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT o.orderkey FROM orders o, lineitem l WHERE l.orderkey = o.orderkey AND l.partkey = o.custkey",
+                noJoinReordering(),
                 anyTree(
                         join(
                                 INNER,
@@ -143,6 +183,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT o.orderkey FROM orders o, lineitem l WHERE l.orderkey = o.orderkey ORDER BY l.orderkey ASC, o.orderkey ASC",
+                noJoinReordering(),
                 anyTree(
                         join(
                                 INNER,
@@ -202,6 +243,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT 1 FROM orders o JOIN lineitem l ON o.shippriority = l.linenumber AND o.orderkey < l.orderkey",
+                noJoinReordering(),
                 anyTree(
                         anyNot(
                                 FilterNode.class,
@@ -222,6 +264,7 @@ public class TestDynamicFilter
     {
         assertPlan(
                 "SELECT part.partkey from part JOIN (lineitem JOIN orders ON lineitem.orderkey = orders.orderkey) ON part.partkey = lineitem.orderkey",
+                noJoinReordering(),
                 anyTree(
                         join(
                                 INNER,
@@ -247,14 +290,15 @@ public class TestDynamicFilter
                 anyTree(
                         join(
                                 INNER,
-                                ImmutableList.of(equiJoinClause("LINEITEM_OK", "PART_PK")),
-                                join(
-                                        INNER,
-                                        ImmutableList.of(equiJoinClause("LINEITEM_OK", "ORDERS_OK")),
-                                        anyTree(node(FilterNode.class, tableScan("lineitem", ImmutableMap.of("LINEITEM_OK", "orderkey")))),
-                                        anyTree(node(FilterNode.class, tableScan("orders", ImmutableMap.of("ORDERS_OK", "orderkey"))))),
+                                ImmutableList.of(equiJoinClause("LINEITEM_OK", "ORDERS_OK")),
+                                anyTree(node(FilterNode.class, tableScan("lineitem", ImmutableMap.of("LINEITEM_OK", "orderkey")))),
                                 exchange(
-                                        project(tableScan("part", ImmutableMap.of("PART_PK", "partkey")))))));
+                                        join(
+                                                INNER,
+                                                ImmutableList.of(equiJoinClause("ORDERS_OK", "PART_PK")),
+                                                anyTree(node(FilterNode.class, tableScan("orders", ImmutableMap.of("ORDERS_OK", "orderkey")))),
+                                                exchange(
+                                                        project(tableScan("part", ImmutableMap.of("PART_PK", "partkey")))))))));
     }
 
     @Test
@@ -417,5 +461,36 @@ public class TestDynamicFilter
                                 exchange(
                                         project(
                                                 tableScan("part", ImmutableMap.of("K2", "partkey", "V2", "size")))))));
+    }
+
+    @Test
+    public void testJoinReorderingNotImpacted()
+    {
+        // Test that addition of dynamic filters does not hinder in join re-ordering
+        // Correct join order is (lineitem IJ (supplier IJ nation))
+        assertPlan("select 1 FROM " +
+                        "  supplier s " +
+                        "  INNER JOIN lineitem l ON s.suppkey = l.suppkey " +
+                        "  INNER JOIN nation n ON s.nationkey = n.nationkey ",
+                anyTree(
+                        join(
+                                INNER,
+                                ImmutableList.of(equiJoinClause("LINEITEM_SK", "SUPPLIER_SK")),
+                                anyTree(node(FilterNode.class, tableScan("lineitem", ImmutableMap.of("LINEITEM_SK", "suppkey")))),
+                                exchange(
+                                        project(
+                                                join(INNER,
+                                                        ImmutableList.of(equiJoinClause("SUPPLIER_NK", "NATION_NK")),
+                                                        anyTree(node(FilterNode.class, tableScan("supplier",
+                                                                ImmutableMap.of("SUPPLIER_SK", "suppkey", "SUPPLIER_NK", "nationkey")))),
+                                                        exchange(project(tableScan("nation", ImmutableMap.of("NATION_NK", "nationkey"))))))))));
+    }
+
+    private Session noJoinReordering()
+    {
+        return Session.builder(this.getQueryRunner().getDefaultSession())
+                .setSystemProperty(JOIN_REORDERING_STRATEGY, ELIMINATE_CROSS_JOINS.name())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, PARTITIONED.name())
+                .build();
     }
 }

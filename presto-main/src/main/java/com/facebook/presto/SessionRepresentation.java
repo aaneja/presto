@@ -17,17 +17,18 @@ import com.facebook.airlift.http.server.BasicPrincipal;
 import com.facebook.drift.annotations.ThriftConstructor;
 import com.facebook.drift.annotations.ThriftField;
 import com.facebook.drift.annotations.ThriftStruct;
+import com.facebook.presto.common.transaction.TransactionId;
 import com.facebook.presto.common.type.TimeZoneKey;
 import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.function.SqlFunctionId;
 import com.facebook.presto.spi.function.SqlInvokedFunction;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.SelectedRole;
 import com.facebook.presto.spi.security.TokenAuthenticator;
 import com.facebook.presto.spi.session.ResourceEstimates;
-import com.facebook.presto.transaction.TransactionId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
@@ -312,7 +313,9 @@ public final class SessionRepresentation
                         principal.map(BasicPrincipal::new),
                         roles,
                         extraCredentials,
-                        extraAuthenticators),
+                        extraAuthenticators,
+                        Optional.empty(),
+                        Optional.empty()),
                 source,
                 catalog,
                 schema,
@@ -331,6 +334,8 @@ public final class SessionRepresentation
                 sessionPropertyManager,
                 preparedStatements,
                 sessionFunctions,
-                Optional.empty());
+                Optional.empty(),
+                // we use NOOP to create a session from the representation as worker does not require warning collectors
+                WarningCollector.NOOP);
     }
 }

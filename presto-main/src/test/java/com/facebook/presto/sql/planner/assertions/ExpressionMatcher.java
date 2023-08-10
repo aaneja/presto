@@ -19,19 +19,20 @@ import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
+import com.facebook.presto.sql.planner.plan.GroupIdNode;
 import com.facebook.presto.sql.tree.Expression;
 import com.google.common.collect.ImmutableList;
 
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.sql.ExpressionUtils.rewriteIdentifiersToSymbolReferences;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.castToExpression;
-import static com.facebook.presto.sql.relational.OriginalExpressionUtils.isExpression;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
@@ -39,18 +40,36 @@ public class ExpressionMatcher
         implements RvalueMatcher
 {
     private final String sql;
+    private final ParsingOptions.DecimalLiteralTreatment decimalLiteralTreatment;
     private final Expression expression;
 
     public ExpressionMatcher(String expression)
     {
         this.sql = requireNonNull(expression);
+        this.decimalLiteralTreatment = ParsingOptions.DecimalLiteralTreatment.REJECT;
         this.expression = expression(requireNonNull(expression));
+    }
+
+    public ExpressionMatcher(String expression, ParsingOptions.DecimalLiteralTreatment decimalLiteralTreatment)
+    {
+        this.sql = requireNonNull(expression);
+        this.decimalLiteralTreatment = decimalLiteralTreatment;
+        this.expression = expression(requireNonNull(expression));
+    }
+
+    public ExpressionMatcher(Expression expression)
+    {
+        this.expression = requireNonNull(expression, "expression is null");
+        this.sql = requireNonNull(expression).toString();
+        this.decimalLiteralTreatment = ParsingOptions.DecimalLiteralTreatment.REJECT;
     }
 
     private Expression expression(String sql)
     {
         SqlParser parser = new SqlParser();
-        return rewriteIdentifiersToSymbolReferences(parser.createExpression(sql));
+        ParsingOptions.Builder builder = ParsingOptions.builder();
+        builder.setDecimalLiteralTreatment(decimalLiteralTreatment);
+        return rewriteIdentifiersToSymbolReferences(parser.createExpression(sql, builder.build()));
     }
 
     @Override
@@ -66,23 +85,14 @@ public class ExpressionMatcher
 
         for (Map.Entry<VariableReferenceExpression, RowExpression> assignment : assignments.entrySet()) {
             RowExpression rightValue = assignment.getValue();
-            if (isExpression(rightValue)) {
-                ExpressionVerifier verifier = new ExpressionVerifier(symbolAliases);
-                if (verifier.process(castToExpression(rightValue), expression)) {
-                    result = Optional.of(assignment.getKey());
-                    matchesBuilder.add(castToExpression(rightValue));
-                }
-            }
-            else {
-                RowExpressionVerifier verifier = new RowExpressionVerifier(symbolAliases, metadata, session);
-                if (verifier.process(expression, rightValue)) {
-                    result = Optional.of(assignment.getKey());
-                    matchesBuilder.add(rightValue);
-                }
+            RowExpressionVerifier verifier = new RowExpressionVerifier(symbolAliases, metadata, session);
+            if (verifier.process(expression, rightValue)) {
+                result = Optional.of(assignment.getKey());
+                matchesBuilder.add(rightValue);
             }
         }
 
-        List<Object> matches = matchesBuilder.build();
+        Set<Object> matches = new HashSet<>(matchesBuilder.build());
         checkState(matches.size() < 2, "Ambiguous expression %s matches multiple assignments", expression,
                 (matches.stream().map(Object::toString).collect(Collectors.joining(", "))));
         return result;
@@ -97,6 +107,10 @@ public class ExpressionMatcher
         else if (node instanceof ApplyNode) {
             ApplyNode applyNode = (ApplyNode) node;
             return applyNode.getSubqueryAssignments().getMap();
+        }
+        else if (node instanceof GroupIdNode) {
+            GroupIdNode groupIdNode = (GroupIdNode) node;
+            return groupIdNode.getGroupingColumns().entrySet().stream().collect(Collectors.toMap(x -> x.getKey(), x -> (RowExpression) x.getValue()));
         }
         else {
             return null;

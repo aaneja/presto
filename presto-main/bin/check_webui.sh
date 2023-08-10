@@ -1,12 +1,15 @@
 #!/bin/bash
 
-# Perform basic validations on the Web UI Javascript code
+# Perform basic validations on the Web UI JavaScript code
 #
 # 1. Validate that the generated files that have been checked in to the webapp folder are in sync
 #    with the source.
 # 2. Make sure there are no type checker warnings reported by Flow
 
 set -euo pipefail
+
+# https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
+export NODE_OPTIONS=--openssl-legacy-provider
 
 WEBUI_ROOT="$(pwd)/${BASH_SOURCE%/*}/../src/main/resources/webapp"
 

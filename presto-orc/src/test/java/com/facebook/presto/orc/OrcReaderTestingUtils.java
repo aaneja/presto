@@ -15,6 +15,11 @@ package com.facebook.presto.orc;
 
 import io.airlift.units.DataSize;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 
 public class OrcReaderTestingUtils
@@ -28,10 +33,23 @@ public class OrcReaderTestingUtils
 
     public static OrcReaderOptions createTestingReaderOptions(boolean zstdJniDecompressionEnabled)
     {
-        return new OrcReaderOptions(
-                new DataSize(1, MEGABYTE),
-                new DataSize(1, MEGABYTE),
-                new DataSize(1, MEGABYTE),
-                zstdJniDecompressionEnabled);
+        DataSize dataSize = new DataSize(1, MEGABYTE);
+        return OrcReaderOptions.builder()
+                .withMaxMergeDistance(dataSize)
+                .withTinyStripeThreshold(dataSize)
+                .withMaxBlockSize(dataSize)
+                .withZstdJniDecompressionEnabled(zstdJniDecompressionEnabled)
+                .build();
+    }
+
+    public static File getResourceFile(String resourceName)
+            throws IOException
+    {
+        File resourceFile = File.createTempFile("presto-orc-test", null);
+        resourceFile.deleteOnExit();
+
+        Files.copy(OrcReaderTestingUtils.class.getClassLoader().getResourceAsStream(resourceName), resourceFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+        return resourceFile;
     }
 }

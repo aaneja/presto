@@ -123,7 +123,7 @@ public class TimestampEncoding
         if (lowest31BitsOfSecondsAndFlag < 0) {
             // read nanos
             // this is an inline version of readVint so it can be stitched together
-            // the the code to read the seconds high bits below
+            // the code to read the seconds high bits below
             byte nanosFirstByte = slice.getByte(offset);
             int nanosLength = decodeVIntSize(nanosFirstByte);
             nanos = (int) readVInt(slice, offset, nanosLength);
@@ -169,8 +169,8 @@ public class TimestampEncoding
 
     private static void writeTimestamp(SliceOutput output, long millis)
     {
-        long seconds = floorDiv(millis, 1000);
-        int nanos = toIntExact(floorMod(millis, 1000) * 1_000_000);
+        long seconds = floorDiv(millis, 1000L);
+        int nanos = toIntExact(floorMod(millis, 1000L) * 1_000_000);
         writeTimestamp(seconds, nanos, output);
     }
 

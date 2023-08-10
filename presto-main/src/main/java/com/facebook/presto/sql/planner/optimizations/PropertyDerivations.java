@@ -29,6 +29,7 @@ import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.LimitNode;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.plan.OrderingScheme;
+import com.facebook.presto.spi.plan.OutputNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.plan.TableScanNode;
@@ -54,7 +55,8 @@ import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
-import com.facebook.presto.sql.planner.plan.OutputNode;
+import com.facebook.presto.sql.planner.plan.MergeJoinNode;
+import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
@@ -521,6 +523,62 @@ public class PropertyDerivations
         }
 
         @Override
+        public ActualProperties visitMergeJoin(MergeJoinNode node, List<ActualProperties> inputProperties)
+        {
+            ActualProperties leftProperties = inputProperties.get(0);
+            ActualProperties rightProperties = inputProperties.get(1);
+            List<VariableReferenceExpression> outputVariableReferences = node.getOutputVariables();
+
+            switch (node.getType()) {
+                case INNER:
+                    leftProperties = leftProperties.translateVariable(column -> filterOrRewrite(outputVariableReferences, node.getCriteria(), column));
+                    rightProperties = rightProperties.translateVariable(column -> filterOrRewrite(outputVariableReferences, node.getCriteria(), column));
+
+                    Map<VariableReferenceExpression, ConstantExpression> constants = new HashMap<>();
+                    constants.putAll(leftProperties.getConstants());
+                    constants.putAll(rightProperties.getConstants());
+
+                    return ActualProperties.builderFrom(leftProperties)
+                            .constants(constants)
+                            .build();
+                case LEFT:
+                    return ActualProperties.builderFrom(leftProperties.translateVariable(column -> filterIfMissing(outputVariableReferences, column)))
+                            .build();
+                case RIGHT:
+                    rightProperties = rightProperties.translateVariable(column -> filterIfMissing(node.getOutputVariables(), column));
+
+                    return ActualProperties.builderFrom(rightProperties.translateVariable(column -> filterIfMissing(outputVariableReferences, column)))
+                            .local(ImmutableList.of())
+                            .unordered(true)
+                            .build();
+                case FULL:
+                    if (leftProperties.isSingleNode()) {
+                        return ActualProperties.builder()
+                                .global(singleStreamPartition())
+                                .build();
+                    }
+
+                    if (leftProperties.getNodePartitioning().isPresent() &&
+                            rightProperties.getNodePartitioning().isPresent() &&
+                            arePartitionHandlesCompatibleForCoalesce(
+                                    leftProperties.getNodePartitioning().get().getHandle(),
+                                    rightProperties.getNodePartitioning().get().getHandle(),
+                                    metadata,
+                                    session)) {
+                        return ActualProperties.builder()
+                                .global(partitionedOnCoalesce(leftProperties.getNodePartitioning().get(), rightProperties.getNodePartitioning().get(), metadata, session))
+                                .build();
+                    }
+
+                    return ActualProperties.builder()
+                            .global(arbitraryPartition())
+                            .build();
+                default:
+                    throw new UnsupportedOperationException("Unsupported join type: " + node.getType());
+            }
+        }
+
+        @Override
         public ActualProperties visitExchange(ExchangeNode node, List<ActualProperties> inputProperties)
         {
             checkArgument(!node.getScope().isRemote() || inputProperties.stream().noneMatch(ActualProperties::isNullsAndAnyReplicated), "Null-and-any replicated inputs should not be remotely exchanged");
@@ -729,6 +787,24 @@ public class PropertyDerivations
             properties.local(LocalProperties.translate(constantAppendedLocalProperties, column -> Optional.ofNullable(assignments.get(column))));
 
             return properties.build();
+        }
+
+        @Override
+        public ActualProperties visitRemoteSource(RemoteSourceNode node, List<ActualProperties> inputProperties)
+        {
+            if (node.getOrderingScheme().isPresent()) {
+                return ActualProperties.builder()
+                        .global(singleStreamPartition())
+                        .unordered(false)
+                        .build();
+            }
+            if (node.isEnsureSourceOrdering()) {
+                return ActualProperties.builder()
+                        .global(singleStreamPartition())
+                        .build();
+            }
+
+            return ActualProperties.builder().build();
         }
 
         private Global deriveGlobalProperties(TableLayout layout, Map<ColumnHandle, VariableReferenceExpression> assignments, Map<ColumnHandle, ConstantExpression> constants)

@@ -20,6 +20,8 @@ import io.airlift.units.MinDuration;
 
 import javax.validation.constraints.Min;
 
+import java.util.concurrent.TimeUnit;
+
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -32,14 +34,18 @@ public class ResourceManagerConfig
     private Duration memoryPoolInfoRefreshDuration = new Duration(1, SECONDS);
     private Duration queryHeartbeatInterval = new Duration(1, SECONDS);
     private Duration nodeHeartbeatInterval = new Duration(1, SECONDS);
-    private int heartbeatThreads = 3;
-    private int heartbeatConcurrency = 3;
+    private Duration resourceGroupRuntimeHeartbeatInterval = new Duration(1, TimeUnit.SECONDS);
+    private Duration resourceGroupRuntimeInfoTimeout = new Duration(30, SECONDS);
+    private int heartbeatThreads = 4;
+    private int heartbeatConcurrency = 4;
     private int resourceManagerExecutorThreads = 1000;
     private Duration proxyAsyncTimeout = new Duration(60, SECONDS);
     private Duration memoryPoolFetchInterval = new Duration(1, SECONDS);
     private boolean resourceGroupServiceCacheEnabled;
     private Duration resourceGroupServiceCacheExpireInterval = new Duration(10, SECONDS);
     private Duration resourceGroupServiceCacheRefreshInterval = new Duration(1, SECONDS);
+
+    private Duration runningTaskCountFetchInterval = new Duration(1, SECONDS);
 
     @MinDuration("1ms")
     public Duration getQueryExpirationTimeout()
@@ -129,6 +135,32 @@ public class ResourceManagerConfig
     public ResourceManagerConfig setNodeHeartbeatInterval(Duration nodeHeartbeatInterval)
     {
         this.nodeHeartbeatInterval = nodeHeartbeatInterval;
+        return this;
+    }
+
+    @MinDuration("1ms")
+    public Duration getResourceGroupRuntimeHeartbeatInterval()
+    {
+        return resourceGroupRuntimeHeartbeatInterval;
+    }
+
+    @Config("resource-manager.resource-group-runtimeinfo-heartbeat-interval")
+    public ResourceManagerConfig setResourceGroupRuntimeHeartbeatInterval(Duration resourceGroupRuntimeHeartbeatInterval)
+    {
+        this.resourceGroupRuntimeHeartbeatInterval = resourceGroupRuntimeHeartbeatInterval;
+        return this;
+    }
+
+    @MinDuration("1ms")
+    public Duration getResourceGroupRuntimeInfoTimeout()
+    {
+        return resourceGroupRuntimeInfoTimeout;
+    }
+
+    @Config("resource-manager.resource-group-runtimeinfo-timeout")
+    public ResourceManagerConfig setResourceGroupRuntimeInfoTimeout(Duration resourceGroupRuntimeInfoTimeout)
+    {
+        this.resourceGroupRuntimeInfoTimeout = resourceGroupRuntimeInfoTimeout;
         return this;
     }
 
@@ -233,6 +265,17 @@ public class ResourceManagerConfig
     public ResourceManagerConfig setResourceGroupServiceCacheRefreshInterval(Duration resourceGroupServiceCacheRefreshInterval)
     {
         this.resourceGroupServiceCacheRefreshInterval = resourceGroupServiceCacheRefreshInterval;
+        return this;
+    }
+
+    public Duration getRunningTaskCountFetchInterval()
+    {
+        return runningTaskCountFetchInterval;
+    }
+    @Config("resource-manager.running-task-count-fetch-interval")
+    public ResourceManagerConfig setRunningTaskCountFetchInterval(Duration runningTaskCountFetchInterval)
+    {
+        this.runningTaskCountFetchInterval = runningTaskCountFetchInterval;
         return this;
     }
 }

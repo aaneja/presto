@@ -44,6 +44,7 @@ import com.facebook.presto.hive.parquet.write.SingleLevelArrayMapKeyValuesSchema
 import com.facebook.presto.hive.parquet.write.SingleLevelArraySchemaConverter;
 import com.facebook.presto.hive.parquet.write.TestMapredParquetOutputFormat;
 import com.facebook.presto.parquet.cache.ParquetMetadataSource;
+import com.facebook.presto.parquet.writer.ParquetSchemaConverter;
 import com.facebook.presto.parquet.writer.ParquetWriter;
 import com.facebook.presto.parquet.writer.ParquetWriterOptions;
 import com.facebook.presto.spi.ConnectorPageSource;
@@ -133,6 +134,7 @@ import static io.airlift.units.DataSize.succinctBytes;
 import static java.lang.Math.toIntExact;
 import static java.util.Arrays.stream;
 import static java.util.Collections.singletonList;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory.getStandardStructObjectInspector;
 import static org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_1_0;
 import static org.apache.parquet.hadoop.ParquetOutputFormat.COMPRESSION;
@@ -392,7 +394,7 @@ public class ParquetTester
                 try (TempFile tempFile = new TempFile("test", "parquet")) {
                     OptionalInt min = stream(writeValues).mapToInt(Iterables::size).min();
                     checkState(min.isPresent());
-                    writeParquetFileFromPresto(tempFile.getFile(), columnTypes, columnNames, getIterators(readValues), min.getAsInt(), compressionCodecName);
+                    writeParquetFileFromPresto(tempFile.getFile(), columnTypes, columnNames, readValues, min.getAsInt(), compressionCodecName);
                     assertFileContents(
                             session,
                             tempFile.getFile(),
@@ -603,7 +605,7 @@ public class ParquetTester
             return new SqlDate(((Long) fieldFromCursor).intValue());
         }
         if (TIMESTAMP.equals(type)) {
-            return new SqlTimestamp((long) fieldFromCursor, UTC_KEY);
+            return new SqlTimestamp((long) fieldFromCursor, UTC_KEY, MILLISECONDS);
         }
         return fieldFromCursor;
     }
@@ -823,12 +825,17 @@ public class ParquetTester
         return type.getObjectValue(SESSION.getSqlFunctionProperties(), block, position);
     }
 
-    public static void writeParquetFileFromPresto(File outputFile, List<Type> types, List<String> columnNames, Iterator<?>[] values, int size, CompressionCodecName compressionCodecName)
+    public static void writeParquetFileFromPresto(File outputFile, List<Type> types, List<String> columnNames, Iterable<?>[] values, int size, CompressionCodecName compressionCodecName)
             throws Exception
     {
         checkArgument(types.size() == columnNames.size() && types.size() == values.length);
+        ParquetSchemaConverter schemaConverter = new ParquetSchemaConverter(
+                types,
+                columnNames);
         ParquetWriter writer = new ParquetWriter(
                 new FileOutputStream(outputFile),
+                schemaConverter.getMessageType(),
+                schemaConverter.getPrimitiveTypes(),
                 columnNames,
                 types,
                 ParquetWriterOptions.builder()
@@ -840,7 +847,7 @@ public class ParquetTester
         PageBuilder pageBuilder = new PageBuilder(types);
         for (int i = 0; i < types.size(); ++i) {
             Type type = types.get(i);
-            Iterator<?> iterator = values[i];
+            Iterator<?> iterator = values[i].iterator();
             BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(i);
 
             for (int j = 0; j < size; ++j) {
@@ -858,7 +865,8 @@ public class ParquetTester
             List<String> columnNames,
             List<Type> columnTypes,
             ParquetMetadataSource parquetMetadataSource,
-            File dataFile)
+            File dataFile,
+            long modificationTime)
     {
         HiveClientConfig config = new HiveClientConfig()
                 .setHiveStorageFormat(HiveStorageFormat.PARQUET)
@@ -871,7 +879,7 @@ public class ParquetTester
                 new CacheConfig()).getSessionProperties());
 
         HiveBatchPageSourceFactory pageSourceFactory = new ParquetPageSourceFactory(FUNCTION_AND_TYPE_MANAGER, FUNCTION_RESOLUTION, HDFS_ENVIRONMENT, new FileFormatDataSourceStats(), parquetMetadataSource);
-        ConnectorPageSource connectorPageSource = createPageSource(pageSourceFactory, session, dataFile, columnNames, columnTypes, HiveStorageFormat.PARQUET);
+        ConnectorPageSource connectorPageSource = createPageSource(pageSourceFactory, session, dataFile, columnNames, columnTypes, HiveStorageFormat.PARQUET, modificationTime);
 
         Iterator<?>[] expectedValues = stream(readValues).map(Iterable::iterator).toArray(size -> new Iterator<?>[size]);
         if (connectorPageSource instanceof RecordPageSource) {

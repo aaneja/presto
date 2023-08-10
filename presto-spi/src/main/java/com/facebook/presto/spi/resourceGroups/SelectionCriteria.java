@@ -29,6 +29,8 @@ public final class SelectionCriteria
     private final Set<String> clientTags;
     private final ResourceEstimates resourceEstimates;
     private final Optional<String> queryType;
+    private final Optional<String> clientInfo;
+    private final Optional<String> schema;
 
     public SelectionCriteria(
             boolean authenticated,
@@ -36,7 +38,9 @@ public final class SelectionCriteria
             Optional<String> source,
             Set<String> clientTags,
             ResourceEstimates resourceEstimates,
-            Optional<String> queryType)
+            Optional<String> queryType,
+            Optional<String> clientInfo,
+            Optional<String> schema)
     {
         this.authenticated = authenticated;
         this.user = requireNonNull(user, "user is null");
@@ -44,6 +48,8 @@ public final class SelectionCriteria
         this.clientTags = unmodifiableSet(requireNonNull(clientTags, "tags is null"));
         this.resourceEstimates = requireNonNull(resourceEstimates, "resourceEstimates is null");
         this.queryType = requireNonNull(queryType, "queryType is null");
+        this.clientInfo = requireNonNull(clientInfo, "clientInfo is null");
+        this.schema = requireNonNull(schema, "schema is null");
     }
 
     public boolean isAuthenticated()
@@ -74,5 +80,15 @@ public final class SelectionCriteria
     public Optional<String> getQueryType()
     {
         return queryType;
+    }
+
+    public Optional<String> getClientInfo()
+    {
+        return clientInfo;
+    }
+
+    public Optional<String> getSchema()
+    {
+        return schema;
     }
 }

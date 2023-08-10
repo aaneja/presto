@@ -24,6 +24,7 @@ import com.facebook.presto.operator.aggregation.state.CorrelationState;
 import com.facebook.presto.operator.aggregation.state.CovarianceState;
 import com.facebook.presto.operator.aggregation.state.RegressionState;
 import com.facebook.presto.operator.aggregation.state.VarianceState;
+import com.facebook.presto.spi.function.AggregationFunctionImplementation;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.sql.gen.CompilerOperations;
 import com.google.common.base.CaseFormat;
@@ -52,7 +53,7 @@ public final class AggregationUtils
         boolean decomposableFunctions = aggregationNode.getAggregations().values().stream()
                 .map(AggregationNode.Aggregation::getFunctionHandle)
                 .map(functionAndTypeManager::getAggregateFunctionImplementation)
-                .allMatch(InternalAggregationFunction::isDecomposable);
+                .allMatch(AggregationFunctionImplementation::isDecomposable);
 
         return !hasOrderBy && !hasDistinct && decomposableFunctions;
     }
@@ -153,7 +154,7 @@ public final class AggregationUtils
         double dividend = state.getC2();
         double divisor = state.getM2X();
 
-        // divisor deliberately not checked for zero because the result can be Infty or NaN even if it is not zero
+        // divisor deliberately not checked for zero because the result can be Infinity or NaN even if it is not zero
         return dividend / divisor;
     }
 

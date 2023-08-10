@@ -14,16 +14,21 @@
 package com.facebook.presto.server;
 
 import com.facebook.airlift.configuration.Config;
+import com.facebook.presto.spi.NodePoolType;
 import io.airlift.units.Duration;
 
 import javax.validation.constraints.NotNull;
 
+import static com.facebook.presto.spi.NodePoolType.DEFAULT;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 public class ServerConfig
 {
+    public static final String POOL_TYPE = "pool_type";
     private boolean resourceManager;
     private boolean resourceManagerEnabled;
+    private boolean catalogServer;
+    private boolean catalogServerEnabled;
     private boolean coordinator = true;
     private String prestoVersion = getClass().getPackage().getImplementationVersion();
     private String dataSources;
@@ -31,6 +36,7 @@ public class ServerConfig
     private Duration gracePeriod = new Duration(2, MINUTES);
     private boolean enhancedErrorReporting = true;
     private boolean queryResultsCompressionEnabled = true;
+    private NodePoolType poolType = DEFAULT;
 
     public boolean isResourceManager()
     {
@@ -53,6 +59,30 @@ public class ServerConfig
     public ServerConfig setResourceManagerEnabled(boolean resourceManagerEnabled)
     {
         this.resourceManagerEnabled = resourceManagerEnabled;
+        return this;
+    }
+
+    public boolean isCatalogServer()
+    {
+        return catalogServer;
+    }
+
+    @Config("catalog-server")
+    public ServerConfig setCatalogServer(boolean catalogServer)
+    {
+        this.catalogServer = catalogServer;
+        return this;
+    }
+
+    public boolean isCatalogServerEnabled()
+    {
+        return catalogServerEnabled;
+    }
+
+    @Config("catalog-server-enabled")
+    public ServerConfig setCatalogServerEnabled(boolean catalogServerEnabled)
+    {
+        this.catalogServerEnabled = catalogServerEnabled;
         return this;
     }
 
@@ -143,6 +173,18 @@ public class ServerConfig
     public ServerConfig setQueryResultsCompressionEnabled(boolean queryResultsCompressionEnabled)
     {
         this.queryResultsCompressionEnabled = queryResultsCompressionEnabled;
+        return this;
+    }
+
+    public NodePoolType getPoolType()
+    {
+        return poolType;
+    }
+
+    @Config("pool-type")
+    public ServerConfig setPoolType(NodePoolType poolType)
+    {
+        this.poolType = poolType;
         return this;
     }
 }

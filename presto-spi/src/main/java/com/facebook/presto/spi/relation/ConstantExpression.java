@@ -23,9 +23,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.Immutable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
 @Immutable
@@ -35,9 +37,7 @@ public final class ConstantExpression
     private final Object value;
     private final Type type;
 
-    public ConstantExpression(
-            Optional<SourceLocation> sourceLocation,
-            Object value, Type type)
+    public ConstantExpression(Optional<SourceLocation> sourceLocation, Object value, Type type)
     {
         super(sourceLocation);
         requireNonNull(type, "type is null");
@@ -85,6 +85,12 @@ public final class ConstantExpression
     }
 
     @Override
+    public List<RowExpression> getChildren()
+    {
+        return emptyList();
+    }
+
+    @Override
     public String toString()
     {
         return String.valueOf(value);
@@ -113,5 +119,11 @@ public final class ConstantExpression
     public <R, C> R accept(RowExpressionVisitor<R, C> visitor, C context)
     {
         return visitor.visitConstant(this, context);
+    }
+
+    @Override
+    public RowExpression canonicalize()
+    {
+        return getSourceLocation().isPresent() ? new ConstantExpression(Optional.empty(), value, type) : this;
     }
 }

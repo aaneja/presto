@@ -62,7 +62,7 @@ import static com.facebook.presto.sql.relational.SqlToRowExpressionTranslator.tr
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.Integer.min;
-import static java.util.Collections.emptyList;
+import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 
 public class ExpressionEquivalence
@@ -115,7 +115,7 @@ public class ExpressionEquivalence
                 sqlParser,
                 types,
                 expression,
-                emptyList(), /* parameters have already been replaced */
+                emptyMap(), /* parameters have already been replaced */
                 WarningCollector.NOOP);
 
         // convert to row expression
@@ -243,6 +243,8 @@ public class ExpressionEquivalence
         }
     }
 
+    // When constant expressions using complex types are present, this comparator will treat them as equal
+    // and produce inconsistent orderings.
     private static class RowExpressionComparator
             implements Comparator<RowExpression>
     {
@@ -304,9 +306,9 @@ public class ExpressionEquivalence
                     return ((Slice) leftValue).compareTo((Slice) rightValue);
                 }
 
-                // value is some random type (say regex), so we just randomly choose a greater value
+                // value is some random type (say regex), so we treat them as equal.
                 // todo: support all known type
-                return -1;
+                return 0;
             }
 
             if (left instanceof InputReferenceExpression) {

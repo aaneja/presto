@@ -33,6 +33,7 @@ import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.server.BasicQueryInfo;
 import com.facebook.presto.server.testing.TestingPrestoServer;
 import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.NodePoolType;
 import com.facebook.presto.spi.NodeState;
 import com.facebook.presto.spi.Plugin;
 import com.facebook.presto.spi.QueryId;
@@ -79,6 +80,8 @@ import static com.facebook.airlift.http.client.JsonResponseHandler.createJsonRes
 import static com.facebook.airlift.http.client.Request.Builder.prepareGet;
 import static com.facebook.airlift.json.JsonCodec.jsonCodec;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_USER;
+import static com.facebook.presto.spi.NodePoolType.INTERMEDIATE;
+import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
 import static com.facebook.presto.testing.TestingSession.createBogusTestingCatalog;
 import static com.facebook.presto.tests.AbstractTestQueries.TEST_CATALOG_PROPERTIES;
@@ -115,8 +118,9 @@ public class DistributedQueryRunner
     private final List<TestingPrestoClient> prestoClients;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private Optional<TestingPrestoServer> resourceManager = Optional.empty();
-
+    private Optional<TestingPrestoServer> catalogServer = Optional.empty();
+    private Optional<List<TestingPrestoServer>> resourceManagers;
+    private final int resourceManagerCount;
     private final AtomicReference<Handle> testFunctionNamespacesHandle = new AtomicReference<>();
 
     @Deprecated
@@ -130,7 +134,22 @@ public class DistributedQueryRunner
     public DistributedQueryRunner(Session defaultSession, int nodeCount, Map<String, String> extraProperties)
             throws Exception
     {
-        this(false, defaultSession, nodeCount, 1, extraProperties, ImmutableMap.of(), ImmutableMap.of(), DEFAULT_SQL_PARSER_OPTIONS, ENVIRONMENT, Optional.empty(), Optional.empty(), ImmutableList.of());
+        this(
+                false,
+                false,
+                defaultSession,
+                nodeCount,
+                1,
+                1,
+                extraProperties,
+                ImmutableMap.of(),
+                ImmutableMap.of(),
+                ImmutableMap.of(),
+                DEFAULT_SQL_PARSER_OPTIONS,
+                ENVIRONMENT,
+                Optional.empty(),
+                Optional.empty(),
+                ImmutableList.of());
     }
 
     public static Builder builder(Session defaultSession)
@@ -140,15 +159,18 @@ public class DistributedQueryRunner
 
     private DistributedQueryRunner(
             boolean resourceManagerEnabled,
+            boolean catalogServerEnabled,
             Session defaultSession,
             int nodeCount,
             int coordinatorCount,
+            int resourceManagerCount,
             Map<String, String> extraProperties,
             Map<String, String> coordinatorProperties,
             Map<String, String> resourceManagerProperties,
+            Map<String, String> catalogServerProperties,
             SqlParserOptions parserOptions,
             String environment,
-            Optional<Path> baseDataDir,
+            Optional<Path> dataDirectory,
             Optional<BiFunction<Integer, URI, Process>> externalWorkerLauncher,
             List<Module> extraModules)
             throws Exception
@@ -160,6 +182,7 @@ public class DistributedQueryRunner
             long start = nanoTime();
             discoveryServer = new TestingDiscoveryServer(environment);
             this.coordinatorCount = coordinatorCount;
+            this.resourceManagerCount = resourceManagerCount;
             closer.register(() -> closeUnchecked(discoveryServer));
             log.info("Created TestingDiscoveryServer in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
             URI discoveryUrl = discoveryServer.getBaseUrl();
@@ -167,6 +190,7 @@ public class DistributedQueryRunner
 
             ImmutableList.Builder<TestingPrestoServer> servers = ImmutableList.builder();
             ImmutableList.Builder<TestingPrestoServer> coordinators = ImmutableList.builder();
+            ImmutableList.Builder<TestingPrestoServer> resourceManagers = ImmutableList.builder();
             Map<String, String> extraCoordinatorProperties = new HashMap<>();
 
             if (externalWorkerLauncher.isPresent()) {
@@ -187,8 +211,23 @@ public class DistributedQueryRunner
             else {
                 externalWorkers = ImmutableList.of();
 
-                for (int i = (coordinatorCount + (resourceManagerEnabled ? 1 : 0)); i < nodeCount; i++) {
-                    TestingPrestoServer worker = closer.register(createTestingPrestoServer(discoveryUrl, false, resourceManagerEnabled, false, extraProperties, parserOptions, environment, baseDataDir, extraModules));
+                for (int i = (coordinatorCount + (resourceManagerEnabled ? resourceManagerCount : 0)); i < nodeCount; i++) {
+                    // We are simply splitting the nodes into leaf and intermediate for testing purpose
+                    NodePoolType workerPool = i % 2 == 0 ? LEAF : INTERMEDIATE;
+                    Map<String, String> workerProperties = new HashMap<>(extraProperties);
+                    workerProperties.put("pool-type", workerPool.name());
+                    TestingPrestoServer worker = closer.register(createTestingPrestoServer(
+                                    discoveryUrl,
+                                    false,
+                                    resourceManagerEnabled,
+                                    false,
+                                    catalogServerEnabled,
+                                    false,
+                                    workerProperties,
+                                    parserOptions,
+                                    environment,
+                                    dataDirectory,
+                                    extraModules));
                     servers.add(worker);
                 }
             }
@@ -197,20 +236,67 @@ public class DistributedQueryRunner
             extraCoordinatorProperties.putAll(extraProperties);
             extraCoordinatorProperties.putAll(coordinatorProperties);
 
+            if (resourceManagerEnabled) {
+                for (int i = 0; i < resourceManagerCount; i++) {
+                    Map<String, String> rmProperties = new HashMap<>(resourceManagerProperties);
+                    if (resourceManagerProperties.get("raft.isEnabled") != null) {
+                        int raftPort = Integer.valueOf(resourceManagerProperties.get("raft.port")) + i;
+                        rmProperties.replace("raft.port", String.valueOf(raftPort));
+                    }
+                    TestingPrestoServer resourceManager = closer.register(createTestingPrestoServer(
+                            discoveryUrl,
+                            true,
+                            true,
+                            false,
+                            false,
+                            false,
+                            rmProperties,
+                            parserOptions,
+                            environment,
+                            dataDirectory,
+                            extraModules));
+                    servers.add(resourceManager);
+                    resourceManagers.add(resourceManager);
+                }
+            }
+
+            if (catalogServerEnabled) {
+                catalogServer = Optional.of(closer.register(createTestingPrestoServer(
+                        discoveryUrl,
+                        false,
+                        false,
+                        true,
+                        true,
+                        false,
+                        catalogServerProperties,
+                        parserOptions,
+                        environment,
+                        dataDirectory,
+                        extraModules)));
+                servers.add(catalogServer.get());
+            }
+
             for (int i = 0; i < coordinatorCount; i++) {
-                TestingPrestoServer coordinator = closer.register(createTestingPrestoServer(discoveryUrl, false, resourceManagerEnabled, true, extraCoordinatorProperties, parserOptions, environment, baseDataDir, extraModules));
+                TestingPrestoServer coordinator = closer.register(createTestingPrestoServer(
+                        discoveryUrl,
+                        false,
+                        resourceManagerEnabled,
+                        false,
+                        catalogServerEnabled,
+                        true,
+                        extraCoordinatorProperties,
+                        parserOptions,
+                        environment,
+                        dataDirectory,
+                        extraModules));
                 servers.add(coordinator);
                 coordinators.add(coordinator);
                 extraCoordinatorProperties.remove("http-server.http.port");
             }
 
-            if (resourceManagerEnabled) {
-                resourceManager = Optional.of(closer.register(createTestingPrestoServer(discoveryUrl, true, true, false, resourceManagerProperties, parserOptions, environment, baseDataDir, extraModules)));
-                servers.add(resourceManager.get());
-            }
-
             this.servers = servers.build();
             this.coordinators = coordinators.build();
+            this.resourceManagers = Optional.of(resourceManagers.build());
         }
         catch (Exception e) {
             try {
@@ -265,10 +351,12 @@ public class DistributedQueryRunner
             }
         }
 
-        int availableCoordinaors = 0;
-        while (availableCoordinaors != coordinators.size()) {
-            MILLISECONDS.sleep(10);
-            availableCoordinaors = getResourceManager().get().getNodeManager().getCoordinators().size();
+        int availableCoordinators = 0;
+        if (getResourceManager().isPresent()) {
+            while (availableCoordinators != coordinators.size()) {
+                MILLISECONDS.sleep(10);
+                availableCoordinators = getResourceManager().get().getNodeManager().getCoordinators().size();
+            }
         }
     }
 
@@ -284,7 +372,18 @@ public class DistributedQueryRunner
         return state;
     }
 
-    private static TestingPrestoServer createTestingPrestoServer(URI discoveryUri, boolean resourceManager, boolean resourceManagerEnabled, boolean coordinator, Map<String, String> extraProperties, SqlParserOptions parserOptions, String environment, Optional<Path> baseDataDir, List<Module> extraModules)
+    private static TestingPrestoServer createTestingPrestoServer(
+            URI discoveryUri,
+            boolean resourceManager,
+            boolean resourceManagerEnabled,
+            boolean catalogServer,
+            boolean catalogServerEnabled,
+            boolean coordinator,
+            Map<String, String> extraProperties,
+            SqlParserOptions parserOptions,
+            String environment,
+            Optional<Path> dataDirectory,
+            List<Module> extraModules)
             throws Exception
     {
         long start = nanoTime();
@@ -296,15 +395,35 @@ public class DistributedQueryRunner
                 .put("distributed-index-joins-enabled", "true")
                 .put("exchange.checksum-enabled", "true");
         if (coordinator) {
-            propertiesBuilder.put("node-scheduler.include-coordinator", "true");
+            propertiesBuilder.put("node-scheduler.include-coordinator", extraProperties.getOrDefault("node-scheduler.include-coordinator", "true"));
             propertiesBuilder.put("join-distribution-type", "PARTITIONED");
         }
         HashMap<String, String> properties = new HashMap<>(propertiesBuilder.build());
         properties.putAll(extraProperties);
 
-        TestingPrestoServer server = new TestingPrestoServer(resourceManager, resourceManagerEnabled, coordinator, properties, environment, discoveryUri, parserOptions, extraModules, baseDataDir);
+        TestingPrestoServer server = new TestingPrestoServer(
+                resourceManager,
+                resourceManagerEnabled,
+                catalogServer,
+                catalogServerEnabled,
+                coordinator,
+                properties,
+                environment,
+                discoveryUri,
+                parserOptions,
+                extraModules,
+                dataDirectory);
 
-        String nodeRole = coordinator ? "coordinator" : resourceManager ? "resourceManager" : "worker";
+        String nodeRole = "worker";
+        if (coordinator) {
+            nodeRole = "coordinator";
+        }
+        else if (resourceManager) {
+            nodeRole = "resourceManager";
+        }
+        else if (catalogServer) {
+            nodeRole = "catalogServer";
+        }
         log.info("Created %s TestingPrestoServer in %s: %s", nodeRole, nanosSince(start).convertToMostSuccinctTimeUnit(), server.getBaseUrl());
 
         return server;
@@ -312,11 +431,16 @@ public class DistributedQueryRunner
 
     private boolean allNodesGloballyVisible()
     {
-        int expectedActiveNodes = externalWorkers.size() + servers.size();
+        int expectedActiveNodesForRm = externalWorkers.size() + servers.size();
+        int expectedActiveNodesForCoordinator = externalWorkers.size() + servers.size();
+
         for (TestingPrestoServer server : servers) {
             AllNodes allNodes = server.refreshNodes();
+            int activeNodeCount = allNodes.getActiveNodes().size();
+
             if (!allNodes.getInactiveNodes().isEmpty() ||
-                    (allNodes.getActiveNodes().size() != expectedActiveNodes)) {
+                    (server.isCoordinator() && activeNodeCount != expectedActiveNodesForCoordinator) ||
+                    (server.isResourceManager() && activeNodeCount != expectedActiveNodesForRm)) {
                 return false;
             }
         }
@@ -427,7 +551,28 @@ public class DistributedQueryRunner
 
     public Optional<TestingPrestoServer> getResourceManager()
     {
-        return resourceManager;
+        return resourceManagers.isPresent() && !resourceManagers.get().isEmpty() ? Optional.of(resourceManagers.get().get(0)) : Optional.empty();
+    }
+
+    public Optional<TestingPrestoServer> getCatalogServer()
+    {
+        return catalogServer;
+    }
+
+    public TestingPrestoServer getResourceManager(int resourceManager)
+    {
+        checkState(resourceManager < resourceManagers.get().size(), format("Expected resource manager index %d < %d", resourceManager, resourceManagerCount));
+        return resourceManagers.get().get(resourceManager);
+    }
+
+    public List<TestingPrestoServer> getResourceManagers()
+    {
+        return resourceManagers.get();
+    }
+
+    public List<TestingPrestoServer> getCoordinatorWorkers()
+    {
+        return getServers().stream().filter(server -> !server.isResourceManager()).collect(ImmutableList.toImmutableList());
     }
 
     public List<TestingPrestoServer> getServers()
@@ -438,11 +583,7 @@ public class DistributedQueryRunner
     @Override
     public void installPlugin(Plugin plugin)
     {
-        long start = nanoTime();
-        for (TestingPrestoServer server : servers) {
-            server.installPlugin(plugin);
-        }
-        log.info("Installed plugin %s in %s", plugin.getClass().getSimpleName(), nanosSince(start).convertToMostSuccinctTimeUnit());
+        installPlugin(plugin, false);
     }
 
     public void createCatalog(String catalogName, String connectorName)
@@ -493,21 +634,12 @@ public class DistributedQueryRunner
      */
     public void enableTestFunctionNamespaces(List<String> catalogNames, Map<String, String> additionalProperties)
     {
-        checkState(testFunctionNamespacesHandle.get() == null, "Test function namespaces already enabled");
+        enableTestFunctionNamespaces(catalogNames, additionalProperties, false);
+    }
 
-        String databaseName = String.valueOf(nanoTime()) + "_" + ThreadLocalRandom.current().nextInt();
-        Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("database-name", databaseName)
-                .putAll(additionalProperties)
-                .build();
-        installPlugin(new H2FunctionNamespaceManagerPlugin());
-        for (String catalogName : catalogNames) {
-            loadFunctionNamespaceManager("h2", catalogName, properties);
-        }
-
-        Handle handle = Jdbi.open(H2ConnectionModule.getJdbcUrl(databaseName));
-        testFunctionNamespacesHandle.set(handle);
-        closer.register(handle);
+    public void enableTestFunctionNamespacesOnCoordinators(List<String> catalogNames, Map<String, String> additionalProperties)
+    {
+        enableTestFunctionNamespaces(catalogNames, additionalProperties, true);
     }
 
     public void createTestFunctionNamespace(String catalogName, String schemaName)
@@ -526,7 +658,7 @@ public class DistributedQueryRunner
         for (TestingPrestoServer server : servers) {
             server.refreshNodes();
             Set<InternalNode> activeNodesWithConnector = server.getActiveNodesWithConnector(connectorId);
-            if (activeNodesWithConnector.size() != servers.size()) {
+            if (((server.isCoordinator() && server.nodeSchedulerIncludeCoordinator()) || server.isResourceManager()) && activeNodesWithConnector.size() != servers.size()) {
                 return false;
             }
         }
@@ -652,7 +784,7 @@ public class DistributedQueryRunner
     }
 
     @Override
-    public final void close()
+    public final synchronized void close()
     {
         cancelAllQueries();
         try {
@@ -675,6 +807,51 @@ public class DistributedQueryRunner
         }
     }
 
+    private void enableTestFunctionNamespaces(List<String> catalogNames, Map<String, String> additionalProperties, boolean coordinatorOnly)
+    {
+        checkState(testFunctionNamespacesHandle.get() == null, "Test function namespaces already enabled");
+
+        String databaseName = String.valueOf(nanoTime()) + "_" + ThreadLocalRandom.current().nextInt();
+        Map<String, String> properties = ImmutableMap.<String, String>builder()
+                .put("database-name", databaseName)
+                .putAll(additionalProperties)
+                .build();
+        installPlugin(new H2FunctionNamespaceManagerPlugin(), coordinatorOnly);
+        for (String catalogName : catalogNames) {
+            loadFunctionNamespaceManager("h2", catalogName, properties, coordinatorOnly);
+        }
+
+        Handle handle = Jdbi.open(H2ConnectionModule.getJdbcUrl(databaseName));
+        testFunctionNamespacesHandle.set(handle);
+        closer.register(handle);
+    }
+
+    private void loadFunctionNamespaceManager(
+            String functionNamespaceManagerName,
+            String catalogName,
+            Map<String, String> properties,
+            boolean coordinatorOnly)
+    {
+        for (TestingPrestoServer server : servers) {
+            if (coordinatorOnly && !server.isCoordinator()) {
+                continue;
+            }
+            server.getMetadata().getFunctionAndTypeManager().loadFunctionNamespaceManager(functionNamespaceManagerName, catalogName, properties);
+        }
+    }
+
+    private void installPlugin(Plugin plugin, boolean coordinatorOnly)
+    {
+        long start = nanoTime();
+        for (TestingPrestoServer server : servers) {
+            if (coordinatorOnly && !server.isCoordinator()) {
+                continue;
+            }
+            server.installPlugin(plugin);
+        }
+        log.info("Installed plugin %s in %s", plugin.getClass().getSimpleName(), nanosSince(start).convertToMostSuccinctTimeUnit());
+    }
+
     private static void closeUnchecked(AutoCloseable closeable)
     {
         try {
@@ -694,12 +871,15 @@ public class DistributedQueryRunner
         private Map<String, String> extraProperties = ImmutableMap.of();
         private Map<String, String> coordinatorProperties = ImmutableMap.of();
         private Map<String, String> resourceManagerProperties = ImmutableMap.of();
+        private Map<String, String> catalogServerProperties = ImmutableMap.of();
         private SqlParserOptions parserOptions = DEFAULT_SQL_PARSER_OPTIONS;
         private String environment = ENVIRONMENT;
-        private Optional<Path> baseDataDir = Optional.empty();
+        private Optional<Path> dataDirectory = Optional.empty();
         private Optional<BiFunction<Integer, URI, Process>> externalWorkerLauncher = Optional.empty();
         private boolean resourceManagerEnabled;
+        private boolean catalogServerEnabled;
         private List<Module> extraModules = ImmutableList.of();
+        private int resourceManagerCount = 1;
 
         protected Builder(Session defaultSession)
         {
@@ -753,6 +933,12 @@ public class DistributedQueryRunner
             return this;
         }
 
+        public Builder setCatalogServerProperties(Map<String, String> catalogServerProperties)
+        {
+            this.catalogServerProperties = catalogServerProperties;
+            return this;
+        }
+
         /**
          * Sets coordinator properties being equal to a map containing given key and value.
          * Note, that calling this method OVERWRITES previously set property values.
@@ -775,9 +961,9 @@ public class DistributedQueryRunner
             return this;
         }
 
-        public Builder setBaseDataDir(Optional<Path> baseDataDir)
+        public Builder setDataDirectory(Optional<Path> dataDirectory)
         {
-            this.baseDataDir = requireNonNull(baseDataDir, "baseDataDir is null");
+            this.dataDirectory = requireNonNull(dataDirectory, "dataDirectory is null");
             return this;
         }
 
@@ -793,16 +979,43 @@ public class DistributedQueryRunner
             return this;
         }
 
+        public Builder setCatalogServerEnabled(boolean catalogServerEnabled)
+        {
+            this.catalogServerEnabled = catalogServerEnabled;
+            return this;
+        }
+
         public Builder setExtraModules(List<Module> extraModules)
         {
             this.extraModules = extraModules;
             return this;
         }
 
+        public Builder setResourceManagerCount(int resourceManagerCount)
+        {
+            this.resourceManagerCount = resourceManagerCount;
+            return this;
+        }
+
         public DistributedQueryRunner build()
                 throws Exception
         {
-            return new DistributedQueryRunner(resourceManagerEnabled, defaultSession, nodeCount, coordinatorCount, extraProperties, coordinatorProperties, resourceManagerProperties, parserOptions, environment, baseDataDir, externalWorkerLauncher, extraModules);
+            return new DistributedQueryRunner(
+                    resourceManagerEnabled,
+                    catalogServerEnabled,
+                    defaultSession,
+                    nodeCount,
+                    coordinatorCount,
+                    resourceManagerCount,
+                    extraProperties,
+                    coordinatorProperties,
+                    resourceManagerProperties,
+                    catalogServerProperties,
+                    parserOptions,
+                    environment,
+                    dataDirectory,
+                    externalWorkerLauncher,
+                    extraModules);
         }
     }
 }

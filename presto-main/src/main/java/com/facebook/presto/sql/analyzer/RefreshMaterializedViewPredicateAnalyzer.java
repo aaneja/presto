@@ -16,7 +16,7 @@ package com.facebook.presto.sql.analyzer;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.QualifiedObjectName;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.spi.ConnectorMaterializedViewDefinition;
+import com.facebook.presto.spi.MaterializedViewDefinition;
 import com.facebook.presto.spi.MaterializedViewNotFoundException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.sql.tree.ComparisonExpression;
@@ -28,6 +28,7 @@ import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NullLiteral;
+import com.facebook.presto.sql.tree.QualifiedName;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 
@@ -35,6 +36,7 @@ import javax.annotation.Nullable;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import static com.facebook.presto.metadata.MetadataUtil.toSchemaTableName;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
@@ -58,7 +60,7 @@ public class RefreshMaterializedViewPredicateAnalyzer
             Metadata metadata,
             Session session)
     {
-        ConnectorMaterializedViewDefinition viewDefinition = metadata.getMaterializedView(session, viewName)
+        MaterializedViewDefinition viewDefinition = metadata.getMetadataResolver(session).getMaterializedView(viewName)
                 .orElseThrow(() -> new MaterializedViewNotFoundException(toSchemaTableName(viewName)));
 
         Visitor visitor = new Visitor(viewDefinition, viewScope);
@@ -75,11 +77,11 @@ public class RefreshMaterializedViewPredicateAnalyzer
     {
         private final ImmutableMultimap.Builder<SchemaTableName, Expression> tablePredicatesBuilder = ImmutableMultimap.builder();
 
-        private final ConnectorMaterializedViewDefinition viewDefinition;
+        private final MaterializedViewDefinition viewDefinition;
         private final Scope viewScope;
 
         private Visitor(
-                ConnectorMaterializedViewDefinition viewDefinition,
+                MaterializedViewDefinition viewDefinition,
                 Scope viewScope)
         {
             this.viewDefinition = requireNonNull(viewDefinition, "viewDefinition is null");
@@ -141,9 +143,15 @@ public class RefreshMaterializedViewPredicateAnalyzer
             if (!(node.getRight() instanceof Literal)) {
                 throw new SemanticException(NOT_SUPPORTED, node.getRight(), "Only columns specified on literals are supported in WHERE clause.");
             }
+            Supplier<QualifiedName> qualifiedName = () -> {
+                if (node.getLeft() instanceof DereferenceExpression) {
+                    return DereferenceExpression.getQualifiedName((DereferenceExpression) node.getLeft());
+                }
+                return QualifiedName.of(((Identifier) node.getLeft()).getValue());
+            };
 
-            ResolvedField resolvedField = viewScope.tryResolveField(node.getLeft()).orElseThrow(() -> missingAttributeException(node.getLeft()));
-            String column = resolvedField.getField().getOriginColumnName().orElseThrow(() -> missingAttributeException(node.getLeft()));
+            ResolvedField resolvedField = viewScope.tryResolveField(node.getLeft()).orElseThrow(() -> missingAttributeException(node.getLeft(), qualifiedName.get()));
+            String column = resolvedField.getField().getOriginColumnName().orElseThrow(() -> missingAttributeException(node.getLeft(), qualifiedName.get()));
 
             if (!viewDefinition.getValidRefreshColumns().orElse(emptyList()).contains(column)) {
                 throw new SemanticException(NOT_SUPPORTED, node.getLeft(), "Refresh materialized view by column %s is not supported.", node.getLeft().toString());

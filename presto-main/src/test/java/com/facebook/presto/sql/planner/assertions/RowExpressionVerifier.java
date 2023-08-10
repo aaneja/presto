@@ -14,18 +14,21 @@
 package com.facebook.presto.sql.planner.assertions;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.common.block.IntArrayBlock;
 import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.common.type.RowType;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.spi.function.FunctionMetadata;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.ConstantExpression;
+import com.facebook.presto.spi.relation.LambdaDefinitionExpression;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.LiteralInterpreter;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
+import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.AstVisitor;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BooleanLiteral;
@@ -42,6 +45,7 @@ import com.facebook.presto.sql.tree.InListExpression;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
+import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
@@ -56,8 +60,10 @@ import com.facebook.presto.sql.tree.TryExpression;
 import com.facebook.presto.sql.tree.WhenClause;
 import io.airlift.slice.Slice;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.common.function.OperatorType.ADD;
@@ -72,6 +78,7 @@ import static com.facebook.presto.common.function.OperatorType.MODULUS;
 import static com.facebook.presto.common.function.OperatorType.MULTIPLY;
 import static com.facebook.presto.common.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.common.function.OperatorType.SUBTRACT;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.StandardTypes.VARCHAR;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.COALESCE;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.DEREFERENCE;
@@ -81,6 +88,7 @@ import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.IS_NUL
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.SWITCH;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.WHEN;
 import static com.facebook.presto.sql.planner.RowExpressionInterpreter.rowExpressionInterpreter;
+import static com.facebook.presto.sql.relational.Expressions.constant;
 import static com.facebook.presto.sql.tree.LogicalBinaryExpression.Operator.AND;
 import static com.facebook.presto.sql.tree.LogicalBinaryExpression.Operator.OR;
 import static com.google.common.base.Preconditions.checkState;
@@ -100,13 +108,15 @@ final class RowExpressionVerifier
     private final Metadata metadata;
     private final Session session;
     private final FunctionResolution functionResolution;
+    private final Set<String> lambdaArguments;
 
     RowExpressionVerifier(SymbolAliases symbolAliases, Metadata metadata, Session session)
     {
         this.symbolAliases = requireNonNull(symbolAliases, "symbolLayout is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.session = requireNonNull(session, "session is null");
-        this.functionResolution = new FunctionResolution(metadata.getFunctionAndTypeManager());
+        this.functionResolution = new FunctionResolution(metadata.getFunctionAndTypeManager().getFunctionAndTypeResolver());
+        this.lambdaArguments = new HashSet<>();
     }
 
     @Override
@@ -116,13 +126,43 @@ final class RowExpressionVerifier
     }
 
     @Override
+    protected Boolean visitArrayConstructor(ArrayConstructor node, RowExpression context)
+    {
+        if (context instanceof CallExpression) {
+            if (!((CallExpression) context).getFunctionHandle().getName().equals("presto.default.array_constructor")) {
+                return false;
+            }
+            for (int i = 0; i < node.getValues().size(); ++i) {
+                if (!process(node.getValues().get(i), ((CallExpression) context).getArguments().get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        else if (context instanceof ConstantExpression && ((ConstantExpression) context).getValue() instanceof IntArrayBlock) {
+            IntArrayBlock block = (IntArrayBlock) ((ConstantExpression) context).getValue();
+            if (block.getPositionCount() != node.getValues().size()) {
+                return false;
+            }
+            for (int i = 0; i < node.getValues().size(); ++i) {
+                if (!process(node.getValues().get(i), constant((long) block.getInt(i), BIGINT))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @Override
     protected Boolean visitTryExpression(TryExpression expected, RowExpression actual)
     {
         if (!(actual instanceof CallExpression) || !functionResolution.isTryFunction(((CallExpression) actual).getFunctionHandle())) {
             return false;
         }
 
-        return process(expected.getInnerExpression(), ((CallExpression) actual).getArguments().get(0));
+        LambdaDefinitionExpression lambdaExpression = (LambdaDefinitionExpression) ((CallExpression) actual).getArguments().get(0);
+        return process(expected.getInnerExpression(), lambdaExpression.getBody());
     }
 
     @Override
@@ -137,9 +177,6 @@ final class RowExpressionVerifier
                 return ((StringLiteral) literal).getValue().equals(actualString);
             }
             return getValueFromLiteral(literal).equals(String.valueOf(LiteralInterpreter.evaluate(TEST_SESSION.toConnectorSession(), (ConstantExpression) actual)));
-        }
-        if (actual instanceof VariableReferenceExpression && expected.getExpression() instanceof SymbolReference && expected.getType().equals(actual.getType().toString())) {
-            return visitSymbolReference((SymbolReference) expected.getExpression(), actual);
         }
         if (!(actual instanceof CallExpression) || !functionResolution.isCastFunction(((CallExpression) actual).getFunctionHandle())) {
             return false;
@@ -226,6 +263,27 @@ final class RowExpressionVerifier
             }
         }
         return false;
+    }
+
+    @Override
+    protected Boolean visitLambdaExpression(LambdaExpression expected, RowExpression actual)
+    {
+        if (!(actual instanceof LambdaDefinitionExpression)) {
+            return false;
+        }
+        LambdaDefinitionExpression lambda = (LambdaDefinitionExpression) actual;
+        if (lambda.getArguments().size() != expected.getArguments().size()) {
+            return false;
+        }
+        for (int i = 0; i < lambda.getArguments().size(); ++i) {
+            lambdaArguments.add(lambda.getArguments().get(i));
+            if (!lambda.getArguments().get(i).equals(expected.getArguments().get(i).getName().getValue())) {
+                return false;
+            }
+        }
+        Boolean value = process(expected.getBody(), lambda.getBody());
+        lambda.getArguments().forEach(argument -> lambdaArguments.remove(argument));
+        return value;
     }
 
     @Override
@@ -464,6 +522,9 @@ final class RowExpressionVerifier
     {
         if (!(actual instanceof VariableReferenceExpression)) {
             return false;
+        }
+        if (lambdaArguments.contains(expected.getName())) {
+            return ((VariableReferenceExpression) actual).getName().equals(expected.getName());
         }
         return symbolAliases.get((expected).getName()).getName().equals(((VariableReferenceExpression) actual).getName());
     }

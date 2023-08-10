@@ -177,7 +177,7 @@ public class TestStringFunctions
 
         // Test for invalid utf-8 characters
         assertInvalidFunction("LEVENSHTEIN_DISTANCE('hello world', utf8(from_hex('81')))", "Invalid UTF-8 encoding in characters: �");
-        assertInvalidFunction("LEVENSHTEIN_DISTANCE('hello wolrd', utf8(from_hex('3281')))", "Invalid UTF-8 encoding in characters: 2�");
+        assertInvalidFunction("LEVENSHTEIN_DISTANCE('hello world', utf8(from_hex('3281')))", "Invalid UTF-8 encoding in characters: 2�");
 
         // Test for maximum length
         assertFunction(format("LEVENSHTEIN_DISTANCE('hello', '%s')", repeat("e", 100_000)), BIGINT, 99999L);
@@ -725,7 +725,7 @@ public class TestStringFunctions
         assertFunction("CAST(LTRIM(CONCAT(' ', utf8(from_hex('81'))), ' ') AS VARBINARY)", VARBINARY, varbinary(0x81));
         assertFunction("CAST(LTRIM(CONCAT(' ', utf8(from_hex('81')), ' '), ' ') AS VARBINARY)", VARBINARY, varbinary(0x81, ' '));
         assertInvalidFunction("LTRIM('hello world', utf8(from_hex('81')))", "Invalid UTF-8 encoding in characters: �");
-        assertInvalidFunction("LTRIM('hello wolrd', utf8(from_hex('3281')))", "Invalid UTF-8 encoding in characters: 2�");
+        assertInvalidFunction("LTRIM('hello world', utf8(from_hex('3281')))", "Invalid UTF-8 encoding in characters: 2�");
     }
 
     @Test
@@ -1044,5 +1044,33 @@ public class TestStringFunctions
         assertInvalidFunction("concat(cast('ab ' as char(40000)), cast('' as char(40000)))", "CHAR length scale must be in range [0, 65536]");
 
         assertFunction("concat(cast(null as char(1)), cast(' ' as char(1)))", createCharType(2), null);
+    }
+
+    @Test
+    public void testStartsWith()
+    {
+        assertFunction("starts_with('abcd', 'ab')", BOOLEAN, true);
+        assertFunction("starts_with('abcd', '')", BOOLEAN, true);
+        assertFunction("starts_with('abcd', 'ba')", BOOLEAN, false);
+        assertFunction("starts_with('', 'ba')", BOOLEAN, false);
+        assertFunction("starts_with(NULL, 'ba')", BOOLEAN, null);
+        assertFunction("starts_with('abcd', NULL)", BOOLEAN, null);
+        assertFunction("starts_with('', NULL)", BOOLEAN, null);
+        assertFunction("starts_with(NULL, '')", BOOLEAN, null);
+        assertFunction("starts_with(NULL, NULL)", BOOLEAN, null);
+    }
+
+    @Test
+    public void testEndsWith()
+    {
+        assertFunction("ends_with('abcd', 'cd')", BOOLEAN, true);
+        assertFunction("ends_with('abcd', '')", BOOLEAN, true);
+        assertFunction("ends_with('abcd', 'zs')", BOOLEAN, false);
+        assertFunction("ends_with('', 'zs')", BOOLEAN, false);
+        assertFunction("ends_with(NULL, 'ba')", BOOLEAN, null);
+        assertFunction("ends_with('abcd', NULL)", BOOLEAN, null);
+        assertFunction("ends_with('', NULL)", BOOLEAN, null);
+        assertFunction("ends_with(NULL, '')", BOOLEAN, null);
+        assertFunction("ends_with(NULL, NULL)", BOOLEAN, null);
     }
 }

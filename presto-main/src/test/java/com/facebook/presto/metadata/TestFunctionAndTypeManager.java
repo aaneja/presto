@@ -83,7 +83,7 @@ public class TestFunctionAndTypeManager
     public void testIdentityCast()
     {
         FunctionAndTypeManager functionAndTypeManager = createTestFunctionAndTypeManager();
-        FunctionHandle exactOperator = functionAndTypeManager.lookupCast(CastType.CAST, HYPER_LOG_LOG.getTypeSignature(), HYPER_LOG_LOG.getTypeSignature());
+        FunctionHandle exactOperator = functionAndTypeManager.lookupCast(CastType.CAST, HYPER_LOG_LOG, HYPER_LOG_LOG);
         assertEquals(exactOperator, new BuiltInFunctionHandle(new Signature(CAST.getFunctionName(), SCALAR, HYPER_LOG_LOG.getTypeSignature(), HYPER_LOG_LOG.getTypeSignature())));
     }
 
@@ -164,11 +164,10 @@ public class TestFunctionAndTypeManager
         assertTrue(names.contains("length"), "Expected function names " + names + " to contain 'length'");
         assertTrue(names.contains("stddev"), "Expected function names " + names + " to contain 'stddev'");
         assertTrue(names.contains("rank"), "Expected function names " + names + " to contain 'rank'");
-        assertFalse(names.contains("tdigest_agg"), "Expected function names " + names + " not to contain 'tdigest_agg'");
         assertFalse(names.contains("quantiles_at_values"), "Expected function names " + names + " not to contain 'quantiles_at_values'");
         assertFalse(names.contains("like"), "Expected function names " + names + " not to contain 'like'");
-        assertFalse(names.contains("$internal$sum_data_size_for_stats"), "Expected function names " + names + " not to contain '$internal$sum_data_size_for_stats'");
-        assertFalse(names.contains("$internal$max_data_size_for_stats"), "Expected function names " + names + " not to contain '$internal$max_data_size_for_stats'");
+        assertFalse(names.contains("sum_data_size_for_stats"), "Expected function names " + names + " not to contain 'sum_data_size_for_stats'");
+        assertFalse(names.contains("max_data_size_for_stats"), "Expected function names " + names + " not to contain 'max_data_size_for_stats'");
     }
 
     @Test
@@ -189,15 +188,15 @@ public class TestFunctionAndTypeManager
         assertTrue(names.contains("tdigest_agg"), "Expected function names " + names + " to contain 'tdigest_agg'");
         assertTrue(names.contains("quantiles_at_values"), "Expected function names " + names + " to contain 'tdigest_agg'");
         assertFalse(names.contains("like"), "Expected function names " + names + " not to contain 'like'");
-        assertFalse(names.contains("$internal$sum_data_size_for_stats"), "Expected function names " + names + " not to contain '$internal$sum_data_size_for_stats'");
-        assertFalse(names.contains("$internal$max_data_size_for_stats"), "Expected function names " + names + " not to contain '$internal$max_data_size_for_stats'");
+        assertFalse(names.contains("sum_data_size_for_stats"), "Expected function names " + names + " not to contain 'sum_data_size_for_stats'");
+        assertFalse(names.contains("max_data_size_for_stats"), "Expected function names " + names + " not to contain 'max_data_size_for_stats'");
     }
 
     @Test
     public void testOperatorTypes()
     {
         FunctionAndTypeManager functionAndTypeManager = createTestFunctionAndTypeManager();
-        FunctionResolution functionResolution = new FunctionResolution(functionAndTypeManager);
+        FunctionResolution functionResolution = new FunctionResolution(functionAndTypeManager.getFunctionAndTypeResolver());
 
         assertTrue(functionAndTypeManager.getFunctionMetadata(functionResolution.arithmeticFunction(ADD, BIGINT, BIGINT)).getOperatorType().map(OperatorType::isArithmeticOperator).orElse(false));
         assertFalse(functionAndTypeManager.getFunctionMetadata(functionResolution.arithmeticFunction(ADD, BIGINT, BIGINT)).getOperatorType().map(OperatorType::isComparisonOperator).orElse(true));

@@ -80,7 +80,7 @@ import static com.facebook.presto.spi.plan.AggregationNode.singleGroupingSet;
 import static com.facebook.presto.spi.plan.LimitNode.Step.FINAL;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.IS_NULL;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
-import static com.facebook.presto.sql.planner.EqualityInference.Builder.nonInferrableConjuncts;
+import static com.facebook.presto.sql.planner.EqualityInference.Builder.nonInferableConjuncts;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.assignment;
 import static com.facebook.presto.sql.planner.optimizations.AggregationNodeUtils.count;
 import static com.facebook.presto.sql.relational.Expressions.call;
@@ -113,7 +113,7 @@ public class TestEffectivePredicateExtractor
     private final Metadata metadata = MetadataManager.createTestMetadataManager();
     private final LogicalRowExpressions logicalRowExpressions = new LogicalRowExpressions(
             new RowExpressionDeterminismEvaluator(metadata.getFunctionAndTypeManager()),
-            new FunctionResolution(metadata.getFunctionAndTypeManager()),
+            new FunctionResolution(metadata.getFunctionAndTypeManager().getFunctionAndTypeResolver()),
             metadata.getFunctionAndTypeManager());
     private final EffectivePredicateExtractor effectivePredicateExtractor = new EffectivePredicateExtractor(
             new RowExpressionDomainTranslator(metadata),
@@ -830,7 +830,7 @@ public class TestEffectivePredicateExtractor
         EqualityInference inference = EqualityInference.createEqualityInference(metadata, predicate);
 
         Set<RowExpression> rewrittenSet = new HashSet<>();
-        for (RowExpression expression : nonInferrableConjuncts(metadata, predicate)) {
+        for (RowExpression expression : nonInferableConjuncts(metadata, predicate)) {
             RowExpression rewritten = inference.rewriteExpression(expression, Predicates.alwaysTrue());
             Preconditions.checkState(rewritten != null, "Rewrite with full symbol scope should always be possible");
             rewrittenSet.add(rewritten);

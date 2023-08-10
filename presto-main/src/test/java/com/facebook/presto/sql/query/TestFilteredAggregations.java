@@ -14,12 +14,14 @@
 package com.facebook.presto.sql.query;
 
 import com.facebook.presto.spi.plan.FilterNode;
-import com.facebook.presto.sql.planner.LogicalPlanner;
+import com.facebook.presto.sql.Optimizer;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.util.Map;
 
 import static com.facebook.presto.SystemSessionProperties.AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
@@ -32,17 +34,18 @@ import static org.testng.Assert.assertFalse;
 public class TestFilteredAggregations
         extends BasePlanTest
 {
+    private static final Map<String, String> sessionProperties = ImmutableMap.of(AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY, "filter_with_if");
     private QueryAssertions assertions;
 
     public TestFilteredAggregations()
     {
-        super(ImmutableMap.of(AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY, "filter_with_if"));
+        super(sessionProperties);
     }
 
     @BeforeClass
     public void init()
     {
-        assertions = new QueryAssertions();
+        assertions = new QueryAssertions(sessionProperties);
     }
 
     @AfterClass(alwaysRun = true)
@@ -277,7 +280,7 @@ public class TestFilteredAggregations
     private void assertPlanContainsNoFilter(String sql)
     {
         assertFalse(
-                searchFrom(plan(sql, LogicalPlanner.Stage.OPTIMIZED).getRoot())
+                searchFrom(plan(sql, Optimizer.PlanStage.OPTIMIZED).getRoot())
                         .where(isInstanceOfAny(FilterNode.class))
                         .matches(),
                 "Unexpected node for query: " + sql);

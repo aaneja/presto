@@ -15,7 +15,6 @@ package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.CounterStat;
-import com.facebook.airlift.stats.CpuTimer;
 import com.facebook.airlift.stats.TimeStat;
 import com.facebook.presto.execution.SplitRunner;
 import com.google.common.base.Ticker;
@@ -23,6 +22,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.Duration;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -40,6 +41,8 @@ public class PrioritizedSplitRunner
 
     // each time we run a split, run it for this length before returning to the pool
     public static final Duration SPLIT_RUN_QUANTA = new Duration(1, TimeUnit.SECONDS);
+
+    private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
     private final long createdNanos = System.nanoTime();
 
@@ -158,24 +161,25 @@ public class PrioritizedSplitRunner
 
             waitNanos.getAndAdd(startNanos - lastReady.get());
 
-            CpuTimer timer = new CpuTimer();
+            long cpuStart = THREAD_MX_BEAN.getCurrentThreadCpuTime();
             ListenableFuture<?> blocked = split.processFor(SPLIT_RUN_QUANTA);
-            CpuTimer.CpuDuration elapsed = timer.elapsedTime();
 
-            long quantaScheduledNanos = ticker.read() - startNanos;
+            long quantaCpuNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime() - cpuStart;
+            long endNanos = ticker.read();
+            long quantaScheduledNanos = endNanos - startNanos;
             scheduledNanos.addAndGet(quantaScheduledNanos);
 
             priority.set(taskHandle.addScheduledNanos(quantaScheduledNanos));
-            lastRun.set(ticker.read());
+            lastRun.set(endNanos);
 
+            Duration wallDuration = new Duration(quantaScheduledNanos, NANOSECONDS);
             if (blocked == NOT_BLOCKED) {
-                unblockedQuantaWallTime.add(elapsed.getWall());
+                unblockedQuantaWallTime.add(wallDuration);
             }
             else {
-                blockedQuantaWallTime.add(elapsed.getWall());
+                blockedQuantaWallTime.add(wallDuration);
             }
 
-            long quantaCpuNanos = elapsed.getCpu().roundTo(NANOSECONDS);
             cpuTimeNanos.addAndGet(quantaCpuNanos);
 
             globalCpuTimeMicros.update(quantaCpuNanos / 1000);

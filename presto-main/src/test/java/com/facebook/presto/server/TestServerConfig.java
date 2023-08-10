@@ -22,6 +22,8 @@ import java.util.Map;
 
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
+import static com.facebook.presto.spi.NodePoolType.DEFAULT;
+import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 public class TestServerConfig
@@ -38,7 +40,10 @@ public class TestServerConfig
                 .setEnhancedErrorReporting(true)
                 .setQueryResultsCompressionEnabled(true)
                 .setResourceManagerEnabled(false)
-                .setResourceManager(false));
+                .setResourceManager(false)
+                .setCatalogServer(false)
+                .setCatalogServerEnabled(false)
+                .setPoolType(DEFAULT));
     }
 
     @Test
@@ -54,6 +59,9 @@ public class TestServerConfig
                 .put("query-results.compression-enabled", "false")
                 .put("resource-manager-enabled", "true")
                 .put("resource-manager", "true")
+                .put("catalog-server-enabled", "true")
+                .put("catalog-server", "true")
+                .put("pool-type", "LEAF")
                 .build();
 
         ServerConfig expected = new ServerConfig()
@@ -65,7 +73,10 @@ public class TestServerConfig
                 .setEnhancedErrorReporting(false)
                 .setQueryResultsCompressionEnabled(false)
                 .setResourceManagerEnabled(true)
-                .setResourceManager(true);
+                .setResourceManager(true)
+                .setCatalogServer(true)
+                .setCatalogServerEnabled(true)
+                .setPoolType(LEAF);
 
         assertFullMapping(properties, expected);
     }

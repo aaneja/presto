@@ -20,9 +20,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.Immutable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
 @Immutable
@@ -59,6 +61,12 @@ public final class InputReferenceExpression
     }
 
     @Override
+    public List<RowExpression> getChildren()
+    {
+        return emptyList();
+    }
+
+    @Override
     public int hashCode()
     {
         return Objects.hash(field, type);
@@ -74,6 +82,12 @@ public final class InputReferenceExpression
     public <R, C> R accept(RowExpressionVisitor<R, C> visitor, C context)
     {
         return visitor.visitInputReference(this, context);
+    }
+
+    @Override
+    public RowExpression canonicalize()
+    {
+        return getSourceLocation().isPresent() ? new InputReferenceExpression(Optional.empty(), field, type) : this;
     }
 
     @Override

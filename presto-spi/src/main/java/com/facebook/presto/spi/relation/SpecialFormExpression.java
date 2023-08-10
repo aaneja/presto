@@ -83,6 +83,12 @@ public class SpecialFormExpression
         return returnType;
     }
 
+    @Override
+    public List<RowExpression> getChildren()
+    {
+        return arguments;
+    }
+
     @JsonProperty
     public List<RowExpression> getArguments()
     {
@@ -119,6 +125,12 @@ public class SpecialFormExpression
     public <R, C> R accept(RowExpressionVisitor<R, C> visitor, C context)
     {
         return visitor.visitSpecialForm(this, context);
+    }
+
+    @Override
+    public RowExpression canonicalize()
+    {
+        return getSourceLocation().isPresent() ? new SpecialFormExpression(Optional.empty(), form, returnType, arguments) : this;
     }
 
     public enum Form

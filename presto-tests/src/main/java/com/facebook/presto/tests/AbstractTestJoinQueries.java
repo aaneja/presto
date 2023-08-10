@@ -15,16 +15,23 @@ package com.facebook.presto.tests;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.common.type.Decimals;
+import com.facebook.presto.execution.QueryInfo;
+import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import org.testng.annotations.Test;
 
+import static com.facebook.presto.SystemSessionProperties.JOINS_NOT_NULL_INFERENCE_STRATEGY;
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
-import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_NULLS_IN_JOINS;
+import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.PARTITIONED;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 import static com.facebook.presto.tests.QueryAssertions.assertContains;
@@ -33,11 +40,62 @@ import static com.facebook.presto.tests.QueryTemplate.parameter;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.String.format;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 public abstract class AbstractTestJoinQueries
         extends AbstractTestQueryFramework
 {
+    @Test
+    public void testShuffledStatsWithInnerJoin()
+    {
+        // NOTE: only test shuffled stats with distributed query runner and disk spilling is disabled.
+        if (!(getQueryRunner() instanceof DistributedQueryRunner) || getQueryRunner().getDefaultSession().getSystemProperty("spill_enabled", Boolean.class)) {
+            return;
+        }
+        DistributedQueryRunner queryRunner = (DistributedQueryRunner) getQueryRunner();
+
+        // Get the number of rows in orders table for query stats verification below.
+        long ordersRows = getTableRowCount("orders");
+        // Get the number of rows in lineitem table for query stats verification below.
+        long lineitemRows = getTableRowCount("lineitem");
+
+        String query = "SELECT a.orderkey, a.orderstatus, b.linenumber FROM orders a JOIN lineitem b ON a.orderkey = b.orderkey";
+        // Set session property to enforce a hash partitioned join.
+        Session partitionedJoin = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, PARTITIONED.name())
+                .setSystemProperty(JOIN_REORDERING_STRATEGY, NONE.name())
+                .build();
+        QueryId partitionQueryId = queryRunner.executeWithQueryId(partitionedJoin, query).getQueryId();
+        QueryInfo partitionJoinQueryInfo = queryRunner.getQueryInfo(partitionQueryId);
+        long expectedRawInputRows = ordersRows + lineitemRows;
+        // Verify the number shuffled rows, raw input rows and output rows in hash partitioned join.
+        // NOTE: the latter two shall be the same for both hash partitioned join and broadcast join.
+        assertEquals(partitionJoinQueryInfo.getQueryStats().getRawInputPositions(), expectedRawInputRows);
+        long expectedOutputRows = lineitemRows;
+        assertEquals(partitionJoinQueryInfo.getQueryStats().getOutputPositions(), expectedOutputRows);
+        long expectedPartitionJoinShuffledRows = lineitemRows + ordersRows + expectedOutputRows;
+        assertEquals(partitionJoinQueryInfo.getQueryStats().getShuffledPositions(), expectedPartitionJoinShuffledRows);
+
+        // Set session property to enforce a broadcast join.
+        Session broadcastJoin = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, BROADCAST.name())
+                .setSystemProperty(JOIN_REORDERING_STRATEGY, NONE.name())
+                .build();
+
+        QueryId broadcastQueryId = queryRunner.executeWithQueryId(broadcastJoin, query).getQueryId();
+        assertNotEquals(partitionQueryId, broadcastQueryId);
+        QueryInfo broadcastJoinQueryInfo = queryRunner.getQueryInfo(broadcastQueryId);
+        assertEquals(broadcastJoinQueryInfo.getQueryStats().getRawInputPositions(), expectedRawInputRows);
+        assertEquals(broadcastJoinQueryInfo.getQueryStats().getOutputPositions(), expectedOutputRows);
+        // NOTE: the number of shuffled bytes except the final output should be a multiple of the number of rows in lineitem table in broadcast join case.
+        assertEquals(((broadcastJoinQueryInfo.getQueryStats().getShuffledPositions() - expectedOutputRows) % lineitemRows), 0);
+        assertTrue((broadcastJoinQueryInfo.getQueryStats().getShuffledPositions() - expectedOutputRows) >= lineitemRows);
+        // Both partitioned join and broadcast join should have the same raw input data set.
+        assertEquals(partitionJoinQueryInfo.getQueryStats().getRawInputPositions(), broadcastJoinQueryInfo.getQueryStats().getRawInputPositions());
+        assertNotEquals(partitionJoinQueryInfo.getQueryStats().getShuffledDataSize().toBytes(), broadcastJoinQueryInfo.getQueryStats().getShuffledDataSize().toBytes());
+    }
+
     @Test
     public void testRowFieldAccessorInJoin()
     {
@@ -174,7 +232,7 @@ public abstract class AbstractTestJoinQueries
     }
 
     @Test
-    public void testJoinWithRangePredicatesinJoinClause()
+    public void testJoinWithRangePredicatesInJoinClause()
     {
         assertQuery("SELECT COUNT(*) " +
                 "FROM (SELECT * FROM lineitem WHERE orderkey % 16 = 0 AND partkey % 2 = 0) lineitem " +
@@ -559,7 +617,7 @@ public abstract class AbstractTestJoinQueries
     }
 
     @Test
-    public void testNonEqalityJoinWithScalarRequiringSessionParameter()
+    public void testNonEqualityJoinWithScalarRequiringSessionParameter()
     {
         assertQuery("SELECT * FROM (VALUES (1,1), (1,2)) t1(a,b) LEFT OUTER JOIN (VALUES (1,1), (1,2)) t2(c,d) ON a=c AND from_unixtime(b) > current_timestamp",
                 "VALUES (1, 1, NULL, NULL), (1, 2, NULL, NULL)");
@@ -910,6 +968,15 @@ public abstract class AbstractTestJoinQueries
                             condition.of("(x+y in (VALUES 4,5)) AND (x in (VALUES 4,5)) != (y in (VALUES 4,5))")),
                     ".*IN with subquery predicate in join condition is not supported");
         }
+    }
+
+    @Test(enabled = false)
+    public void testOuterJoinWithExpression()
+    {
+        assertQuery("SELECT o.orderkey FROM orders o RIGHT JOIN lineitem l ON l.orderkey * 2 + 1 = o.orderkey");
+        assertQuery("SELECT o.orderkey FROM orders o RIGHT JOIN lineitem l ON l.orderkey * 5 - o.orderkey * 10 = 1");
+        assertQuery("SELECT o.orderkey FROM orders o LEFT JOIN lineitem l ON l.orderkey * 2 + 1 = o.orderkey");
+        assertQuery("SELECT o.orderkey FROM orders o LEFT JOIN lineitem l ON l.orderkey * 5 - o.orderkey * 10 = 1");
     }
 
     @Test
@@ -1628,7 +1695,7 @@ public abstract class AbstractTestJoinQueries
     }
 
     @Test
-    public void testUnionWithJoinOnNonTranslateableSymbols()
+    public void testUnionWithJoinOnNonTranslatableSymbols()
     {
         assertQuery("SELECT *\n" +
                 "FROM (SELECT orderdate ds, orderkey\n" +
@@ -2353,11 +2420,8 @@ public abstract class AbstractTestJoinQueries
     @Test
     public void testJoinsWithNulls()
     {
-        Session sessionWithOptNulls = Session.builder(getSession())
-                .setSystemProperty(OPTIMIZE_NULLS_IN_JOINS, "true")
-                .build();
         testJoinsWithNullsInternal(getSession());
-        testJoinsWithNullsInternal(sessionWithOptNulls);
+        testJoinsWithNullsInternal(inferNullsFromJoinFiltersWithUseFunctionMetadata());
     }
 
     private void testJoinsWithNullsInternal(Session session)
@@ -2388,6 +2452,53 @@ public abstract class AbstractTestJoinQueries
                 "SELECT * FROM (VALUES 2, 3, null) a(x) " +
                         "FULL OUTER JOIN (VALUES 3, 4, null) b(x) ON a.x = b.x WHERE a.x IS NULL",
                 "SELECT * FROM VALUES (NULL, 4), (NULL, NULL), (NULL, NULL)");
+        assertQuery(
+                session,
+                "SELECT * FROM (VALUES '1', '', '2', '3') a(x) INNER JOIN (VALUES 1, 2, 3) b(y) " +
+                        "ON CAST(x AS int) = y WHERE x <> ''",
+                "SELECT * FROM VALUES (1,1), (2,2), (3,3)");
+
+        // Asserting current behavior of performing filtering before JOINs
+        // We prevent dereference failures in below queries by using the CARDINALITY function
+        // Since the optimizer chooses to do filtering before the JOIN, we can use these dereferenced fields in the JOIN clause
+        assertQuery(
+                session,
+                "select l.number from (VALUES 5) l(number) " +
+                        "INNER JOIN (select sequence(1,number) as numArr from unnest(sequence(1,5)) AS x(number)) r " +
+                        "ON l.number = r.numArr[5] WHERE CARDINALITY(r.numArr) = 5",
+                // Only the last row from 'r', [1,2,3,4,5] will have cardinality of 5 and JOIN with 'l'
+                "SELECT 5 as number");
+
+        assertQuery(
+                session,
+                "select l.numArr[5] as result from " +
+                        // This will produce the 5 row relation
+                        // [1], [2,2], [3,3,3], [4,4,4,4], [5,5,5,5,5]
+                        "(select repeat(number,cast(number as integer)) as numArr from unnest(sequence(1,5)) AS x(number)) l " +
+                        "INNER JOIN " +
+                        // This will produce the 5 row relation
+                        // [5,5,5,5,5], [6,6,6,6,6,6], ... , [10,10,10,10,10,10,10,10,10,10]
+                        "(select repeat(number,cast(number as integer)) as numArr from unnest(sequence(5,10)) AS x(number)) r " +
+                        "ON l.numArr[5] = r.numArr[5] " +
+                        "WHERE CARDINALITY(l.numArr) >= 5 AND CARDINALITY(r.numArr) >= 5",
+                // Only the last row from 'l' : [5,5,5,5,5] will JOIN with the first row of 'r' : [5,5,5,5,5]
+                "SELECT 5 as result");
+
+        assertQuery(
+                session,
+                "SELECT 1 FROM ( VALUES " +
+                        "ARRAY[ CAST(ROW(1) AS ROW(x INTEGER)), CAST(ROW(2) AS ROW(x INTEGER)) ], " +
+                        "ARRAY[ CAST(ROW(4) AS ROW(x INTEGER)), CAST(ROW(5) AS ROW(x INTEGER)), " +
+                        "CAST(ROW(6) AS ROW(x INTEGER)) ], ARRAY[], NULL ) l(f) " +
+                        "INNER JOIN ( VALUES " +
+                        "ARRAY[ CAST(ROW(1) AS ROW(x INTEGER)), CAST(ROW(5) AS ROW(x INTEGER)), " +
+                        "CAST(ROW(3) AS ROW(x INTEGER)) ], " +
+                        "ARRAY[CAST(ROW(7) AS ROW(x INTEGER))], ARRAY[], NULL ) r(f) " +
+                        "ON l.f[2].x = r.f[2].x " +
+                        "AND CARDINALITY(l.f) >= 2 AND CARDINALITY(r.f) >= 2",
+                // Row 2 from l(f) and Row 1 from r(f) will JOIN to produce a one row result
+                // H2 database doesn't support the 'ROW' operator, so we assert only on the presence of a 1 row output
+                "select 1");
     }
 
     @Test
@@ -2395,6 +2506,13 @@ public abstract class AbstractTestJoinQueries
     {
         MaterializedResult actual = computeActual(
                 noJoinReordering(),
+                "WITH small_part AS (SELECT * FROM part WHERE name = 'a') " +
+                        "SELECT lineitem.orderkey FROM lineitem INNER JOIN small_part ON lineitem.partkey = small_part.partkey");
+
+        assertEquals(actual.getRowCount(), 0);
+
+        actual = computeActual(
+                optimizeJoinForEmptyBuildRuntime(),
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') " +
                         "SELECT lineitem.orderkey FROM lineitem INNER JOIN small_part ON lineitem.partkey = small_part.partkey");
 
@@ -2407,6 +2525,10 @@ public abstract class AbstractTestJoinQueries
         assertQuery(
                 noJoinReordering(),
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem RIGHT JOIN small_part ON lineitem.partkey = small_part.partkey");
+
+        assertQuery(
+                optimizeJoinForEmptyBuildRuntime(),
+                "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem RIGHT JOIN small_part ON lineitem.partkey = small_part.partkey");
     }
 
     @Test
@@ -2415,6 +2537,9 @@ public abstract class AbstractTestJoinQueries
         assertQuery(
                 noJoinReordering(),
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem LEFT JOIN small_part ON lineitem.partkey = small_part.partkey");
+        assertQuery(
+                optimizeJoinForEmptyBuildRuntime(),
+                "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem LEFT JOIN small_part ON lineitem.partkey = small_part.partkey");
     }
 
     @Test
@@ -2422,6 +2547,12 @@ public abstract class AbstractTestJoinQueries
     {
         assertQuery(
                 noJoinReordering(),
+                "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem FULL OUTER JOIN small_part ON lineitem.partkey = small_part.partkey",
+                // H2 doesn't support FULL OUTER
+                "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem LEFT JOIN small_part ON lineitem.partkey = small_part.partkey");
+
+        assertQuery(
+                optimizeJoinForEmptyBuildRuntime(),
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem FULL OUTER JOIN small_part ON lineitem.partkey = small_part.partkey",
                 // H2 doesn't support FULL OUTER
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM lineitem LEFT JOIN small_part ON lineitem.partkey = small_part.partkey");
@@ -2443,11 +2574,45 @@ public abstract class AbstractTestJoinQueries
                 "WITH small_part AS (SELECT * FROM part WHERE name = 'a') SELECT lineitem.orderkey FROM small_part RIGHT JOIN lineitem ON  small_part.partkey = lineitem.partkey");
     }
 
+    @Test
+    public void testJoinsWithNullInferencing()
+    {
+        Session joinsNullInferenceStrategy = inferNullsFromJoinFiltersWithUseFunctionMetadata();
+        assertQuery(joinsNullInferenceStrategy, "select 1 from lineitem l, orders o where l.orderkey = o.orderkey");
+        assertQuery(joinsNullInferenceStrategy, "select 1 from lineitem l join orders o on l.orderkey = o.orderkey and l.partkey = o.custkey");
+        assertQuery(joinsNullInferenceStrategy, "select 1 from lineitem l join orders o on l.orderkey = o.orderkey, customer c where c.custkey = o.custkey");
+        assertQuery(joinsNullInferenceStrategy, "select 1 from lineitem l left join orders o on l.orderkey = o.orderkey inner join customer c on o.custkey=c.custkey");
+        assertQuery(joinsNullInferenceStrategy, "select 1 from lineitem l left join orders o on l.orderkey = o.orderkey and partkey - custkey > 10");
+    }
+
     protected Session noJoinReordering()
     {
         return Session.builder(getSession())
                 .setSystemProperty(JOIN_REORDERING_STRATEGY, FeaturesConfig.JoinReorderingStrategy.NONE.name())
                 .setSystemProperty(JOIN_DISTRIBUTION_TYPE, FeaturesConfig.JoinDistributionType.PARTITIONED.name())
                 .build();
+    }
+
+    protected Session optimizeJoinForEmptyBuildRuntime()
+    {
+        return Session.builder(getSession())
+                .setSystemProperty(OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME, "true")
+                .build();
+    }
+
+    private Session inferNullsFromJoinFiltersWithUseFunctionMetadata()
+    {
+        return Session.builder(getSession())
+                .setSystemProperty(JOINS_NOT_NULL_INFERENCE_STRATEGY, "USE_FUNCTION_METADATA")
+                .build();
+    }
+
+    private long getTableRowCount(String tableName)
+    {
+        String countQuery = "SELECT COUNT(*) FROM " + tableName;
+        MaterializedRow countRow = Iterables.getOnlyElement(getQueryRunner().execute(countQuery));
+        int rowFieldCount = countRow.getFieldCount();
+        assertEquals(rowFieldCount, 1);
+        return (long) countRow.getField(0);
     }
 }

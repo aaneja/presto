@@ -16,6 +16,7 @@ package com.facebook.presto.iceberg;
 import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.log.Logging;
 import com.facebook.presto.Session;
+import com.facebook.presto.connector.jmx.JmxPlugin;
 import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tpch.TpchPlugin;
 import com.google.common.collect.ImmutableMap;
@@ -24,6 +25,7 @@ import org.apache.iceberg.FileFormat;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.OptionalInt;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tests.QueryAssertions.copyTpchTables;
@@ -37,16 +39,16 @@ public final class IcebergQueryRunner
 
     private IcebergQueryRunner() {}
 
-    public static DistributedQueryRunner createIcebergQueryRunner(Map<String, String> extraProperties) throws Exception
+    public static DistributedQueryRunner createIcebergQueryRunner(Map<String, String> extraProperties)
+            throws Exception
     {
         return createIcebergQueryRunner(extraProperties, ImmutableMap.of());
     }
 
-    public static DistributedQueryRunner createNativeIcebergQueryRunner(Map<String, String> extraProperties, CatalogType catalogType) throws Exception
+    public static DistributedQueryRunner createIcebergQueryRunner(Map<String, String> extraProperties, CatalogType catalogType)
+            throws Exception
     {
-        return createIcebergQueryRunner(extraProperties, ImmutableMap.of(
-                "iceberg.native-mode", "true",
-                "iceberg.catalog.type", catalogType.name()));
+        return createIcebergQueryRunner(extraProperties, ImmutableMap.of("iceberg.catalog.type", catalogType.name()));
     }
 
     public static DistributedQueryRunner createIcebergQueryRunner(Map<String, String> extraProperties, Map<String, String> extraConnectorProperties)
@@ -69,31 +71,51 @@ public final class IcebergQueryRunner
             boolean createTpchTables)
             throws Exception
     {
+        return createIcebergQueryRunner(extraProperties, extraConnectorProperties, format, createTpchTables, false, OptionalInt.empty());
+    }
+
+    public static DistributedQueryRunner createIcebergQueryRunner(
+            Map<String, String> extraProperties,
+            Map<String, String> extraConnectorProperties,
+            FileFormat format,
+            boolean createTpchTables,
+            boolean addJmxPlugin,
+            OptionalInt nodeCount)
+            throws Exception
+    {
         Session session = testSessionBuilder()
                 .setCatalog(ICEBERG_CATALOG)
                 .setSchema("tpch")
                 .build();
 
-        DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(session)
-                .setExtraProperties(extraProperties)
-                .build();
+        DistributedQueryRunner.Builder queryRunnerBuilder = DistributedQueryRunner.builder(session)
+                .setExtraProperties(extraProperties);
+
+        nodeCount.ifPresent(queryRunnerBuilder::setNodeCount);
+
+        DistributedQueryRunner queryRunner = queryRunnerBuilder.build();
 
         queryRunner.installPlugin(new TpchPlugin());
         queryRunner.createCatalog("tpch", "tpch");
 
-        Path dataDir = queryRunner.getCoordinator().getBaseDataDir().resolve("iceberg_data");
-        Path catalogDir = dataDir.getParent().resolve("catalog");
+        Path dataDirectory = queryRunner.getCoordinator().getDataDirectory().resolve("iceberg_data");
+        Path catalogDirectory = dataDirectory.getParent().resolve("catalog");
 
         queryRunner.installPlugin(new IcebergPlugin());
         Map<String, String> icebergProperties = ImmutableMap.<String, String>builder()
                 .put("hive.metastore", "file")
-                .put("hive.metastore.catalog.dir", catalogDir.toFile().toURI().toString())
+                .put("hive.metastore.catalog.dir", catalogDirectory.toFile().toURI().toString())
                 .put("iceberg.file-format", format.name())
-                .put("iceberg.catalog.warehouse", dataDir.getParent().toFile().toURI().toString())
+                .put("iceberg.catalog.warehouse", dataDirectory.getParent().toFile().toURI().toString())
                 .putAll(extraConnectorProperties)
                 .build();
 
         queryRunner.createCatalog(ICEBERG_CATALOG, "iceberg", icebergProperties);
+
+        if (addJmxPlugin) {
+            queryRunner.installPlugin(new JmxPlugin());
+            queryRunner.createCatalog("jmx", "jmx");
+        }
 
         queryRunner.execute("CREATE SCHEMA tpch");
 

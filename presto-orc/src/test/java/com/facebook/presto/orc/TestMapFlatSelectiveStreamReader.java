@@ -37,7 +37,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import org.testng.annotations.Test;
 
-import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,7 +70,7 @@ import static com.facebook.presto.orc.TestingOrcPredicate.createOrcPredicate;
 import static com.facebook.presto.testing.TestingEnvironment.FUNCTION_AND_TYPE_MANAGER;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.io.Resources.getResource;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toList;
 
 public class TestMapFlatSelectiveStreamReader
@@ -454,7 +453,7 @@ public class TestMapFlatSelectiveStreamReader
         Map<Integer, Map<Subfield, TupleDomainFilter>> filters = ImmutableMap.of(1, ImmutableMap.of(new Subfield("c"), toBigintValues(new long[] {1, 5, 6}, true)));
         assertFileContentsPresto(
                 types,
-                new File(getResource(testOrcFileName).getFile()),
+                OrcReaderTestingUtils.getResourceFile(testOrcFileName),
                 filterRows(types, ImmutableList.of(expectedValues, ids), filters),
                 OrcEncoding.DWRF,
                 OrcPredicate.TRUE,
@@ -466,7 +465,7 @@ public class TestMapFlatSelectiveStreamReader
         TestingFilterFunction filterFunction = new TestingFilterFunction(mapType);
         assertFileContentsPresto(
                 types,
-                new File(getResource(testOrcFileName).getFile()),
+                OrcReaderTestingUtils.getResourceFile(testOrcFileName),
                 filterFunction.filterRows(ImmutableList.of(expectedValues, ids)),
                 OrcEncoding.DWRF,
                 OrcPredicate.TRUE,
@@ -514,7 +513,7 @@ public class TestMapFlatSelectiveStreamReader
 
         assertFileContentsPresto(
                 types,
-                new File(getResource(testOrcFileName).getFile()),
+                OrcReaderTestingUtils.getResourceFile(testOrcFileName),
                 filters.map(f -> filterRows(types, ImmutableList.of(expectedValues), f)).orElse(ImmutableList.of(expectedValues)),
                 OrcEncoding.DWRF,
                 orcPredicate,
@@ -531,7 +530,7 @@ public class TestMapFlatSelectiveStreamReader
 
     private static SqlTimestamp intToTimestamp(int i)
     {
-        return new SqlTimestamp(i, TimeZoneKey.UTC_KEY);
+        return new SqlTimestamp(i, TimeZoneKey.UTC_KEY, MILLISECONDS);
     }
 
     private static List<Integer> intToList(int i)

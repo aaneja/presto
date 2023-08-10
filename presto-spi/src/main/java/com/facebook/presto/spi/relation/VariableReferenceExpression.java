@@ -20,9 +20,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.Immutable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
 @Immutable
@@ -58,6 +60,12 @@ public final class VariableReferenceExpression
     }
 
     @Override
+    public List<RowExpression> getChildren()
+    {
+        return emptyList();
+    }
+
+    @Override
     public int hashCode()
     {
         return Objects.hash(name, type);
@@ -73,6 +81,12 @@ public final class VariableReferenceExpression
     public <R, C> R accept(RowExpressionVisitor<R, C> visitor, C context)
     {
         return visitor.visitVariableReference(this, context);
+    }
+
+    @Override
+    public RowExpression canonicalize()
+    {
+        return getSourceLocation().isPresent() ? new VariableReferenceExpression(Optional.empty(), name, type) : this;
     }
 
     @Override

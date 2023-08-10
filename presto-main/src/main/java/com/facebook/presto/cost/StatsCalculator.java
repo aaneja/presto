@@ -35,4 +35,21 @@ public interface StatsCalculator
             Lookup lookup,
             Session session,
             TypeProvider types);
+
+    /**
+     * Presto Optimizer will call this once for a query that needs StatsCalculator interface. It is called
+     * with the root PlanNode, so StatsCalculator can prepare for future `calculateStats` calls.
+     *
+     * @param root Root of plan tree for query
+     * @return true if registration succeeds, otherwise return false
+     */
+    default boolean registerPlan(
+            PlanNode root,
+            Session session,
+            long startTimeInNano,
+            long timeoutInMilliseconds)
+    {
+        // no-op
+        return false;
+    }
 }

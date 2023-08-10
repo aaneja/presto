@@ -78,6 +78,7 @@ import static com.facebook.presto.common.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.common.type.TinyintType.TINYINT;
 import static com.facebook.presto.common.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
+import static com.facebook.presto.orc.NoOpOrcWriterStats.NOOP_WRITER_STATS;
 import static com.facebook.presto.orc.OrcReader.MAX_BATCH_SIZE;
 import static com.facebook.presto.orc.OrcTester.Format.DWRF;
 import static com.facebook.presto.orc.OrcTester.HIVE_STORAGE_TIME_ZONE;
@@ -861,7 +862,9 @@ public class TestSelectiveOrcReader
 
         tester.testRoundTrip(createCharType(2), newArrayList(limit(cycle(ImmutableList.of("aa", "bb", "cc", "dd")), NUM_ROWS)), IS_NULL);
 
-        tester.testRoundTrip(createCharType(1), newArrayList(limit(cycle(ImmutableList.of("a", "b", "c", "d")), NUM_ROWS)),
+        tester.testRoundTrip(
+                createCharType(1),
+                newArrayList(limit(cycle(ImmutableList.of("a", "b", "c", "d")), NUM_ROWS)),
                 stringIn(false, "a", "b"),
                 stringIn(true, "a", "b"));
 
@@ -873,18 +876,26 @@ public class TestSelectiveOrcReader
                         .collect(toList()));
 
         // char with filter
+        // The values are padded with trailing spaces so that they are all 10 characters long
+        List<?> values = newArrayList(limit(cycle(ImmutableList.of(1, 3, 5, 7, 11, 13, 17)), NUM_ROWS)).stream()
+                .map(i -> toCharValue(i, 10))
+                .collect(toList());
+        // Test with filter c IN {'1','3'}. Note that the values should not have any paddings since the filter passed to the reader is without paddings for CHAR(n).
+        // The filter for the expected values is with the paddings because of the test limitations.
         tester.testRoundTrip(
                 CHAR_10,
-                newArrayList(limit(cycle(ImmutableList.of(1, 3, 5, 7, 11, 13, 17)), NUM_ROWS)).stream()
-                        .map(i -> toCharValue(i, 10))
-                        .collect(toList()),
-                stringIn(true, toCharValue(1, 10), toCharValue(3, 10)));
+                values,
+                ImmutableList.of(ImmutableMap.of(new Subfield("c"), stringIn(true, toCharValue(1, 1), toCharValue(3, 1)))),
+                ImmutableList.of(ImmutableMap.of(new Subfield("c"), stringIn(true, toCharValue(1, 10), toCharValue(3, 10)))));
 
         // char with 0 truncated length
         tester.testRoundTrip(CHAR_10, newArrayList(limit(cycle(toCharValue("", 10)), NUM_ROWS)));
 
-        tester.testRoundTrip(VARCHAR, newArrayList(concat(ImmutableList.of("a"), nCopies(9999, "123"), ImmutableList.of("b"), nCopies(9999, "123"))),
-                stringIn(false, "a", "b"));
+        tester.testRoundTrip(
+                VARCHAR,
+                newArrayList(concat(ImmutableList.of("a"), nCopies(9999, "123"), ImmutableList.of("b"), nCopies(9999, "123"))),
+                ImmutableList.of(ImmutableMap.of(new Subfield("c"), stringIn(false, "a", "b"))),
+                ImmutableList.of(ImmutableMap.of(new Subfield("c"), stringIn(false, "a", "b"))));
     }
 
     @Test
@@ -953,7 +964,7 @@ public class TestSelectiveOrcReader
         List<String> varcharDictionaryValues = newArrayList(limit(cycle(ImmutableList.of("apple", "apple pie", "apple\uD835\uDC03", "apple\uFFFD")), NUM_ROWS));
         List<List<?>> values = ImmutableList.of(intValues, varcharDirectValues, varcharDictionaryValues);
 
-        writeOrcColumnsPresto(tempFile.getFile(), DWRF, compression, Optional.empty(), types, values, new OrcWriterStats());
+        writeOrcColumnsPresto(tempFile.getFile(), DWRF, compression, Optional.empty(), types, values, NOOP_WRITER_STATS);
 
         OrcPredicate orcPredicate = createOrcPredicate(types, values, DWRF, false);
         Map<Integer, Type> includedColumns = IntStream.range(0, types.size())
@@ -978,7 +989,8 @@ public class TestSelectiveOrcReader
                 includedColumns,
                 outputColumns,
                 false,
-                systemMemoryUsage)) {
+                systemMemoryUsage,
+                false)) {
             assertEquals(recordReader.getReaderPosition(), 0);
             assertEquals(recordReader.getFilePosition(), 0);
 
@@ -1008,16 +1020,42 @@ public class TestSelectiveOrcReader
     public void testOutputNotRequired()
             throws Exception
     {
+        List<String> inputValues = newArrayList(limit(cycle(ImmutableList.of("A", "B", "C")), NUM_ROWS));
+        Map<Subfield, TupleDomainFilter> filters = ImmutableMap.of(new Subfield("c"), stringIn(true, "A", "B", "C"));
+        verifyOutputNotRequired(inputValues, filters, inputValues);
+    }
+
+    @Test
+    public void testOutputNotRequiredNonNullFilterNulls()
+            throws Exception
+    {
+        List<String> inputValues = newArrayList(limit(cycle(Arrays.asList("A", null)), NUM_ROWS));
+        List<String> expectedValues = newArrayList(limit(cycle(Arrays.asList("A")), (NUM_ROWS + 1) / 2));
+
+        Map<Subfield, TupleDomainFilter> filters = ImmutableMap.of(new Subfield("c"), IS_NOT_NULL);
+        verifyOutputNotRequired(inputValues, filters, expectedValues);
+    }
+
+    @Test
+    public void testOutputNotRequiredNonNullFilterNoNulls()
+            throws Exception
+    {
+        List<String> inputValues = newArrayList(limit(cycle(Arrays.asList("A", "B", "C")), NUM_ROWS));
+
+        Map<Subfield, TupleDomainFilter> filters = ImmutableMap.of(new Subfield("c"), IS_NOT_NULL);
+        verifyOutputNotRequired(inputValues, filters, inputValues);
+    }
+
+    private void verifyOutputNotRequired(List<String> inputValues, Map<Subfield, TupleDomainFilter> filters, List<String> expectedValues)
+            throws Exception
+    {
         List<Type> types = ImmutableList.of(VARCHAR, VARCHAR);
         TempFile tempFile = new TempFile();
 
-        List<String> varcharDirectValues = newArrayList(limit(cycle(ImmutableList.of("A", "B", "C")), NUM_ROWS));
-        List<List<?>> values = ImmutableList.of(varcharDirectValues, varcharDirectValues);
-
-        writeOrcColumnsPresto(tempFile.getFile(), DWRF, NONE, Optional.empty(), types, values, new OrcWriterStats());
+        List<List<?>> values = ImmutableList.of(inputValues, inputValues);
+        writeOrcColumnsPresto(tempFile.getFile(), DWRF, NONE, Optional.empty(), types, values, NOOP_WRITER_STATS);
 
         OrcPredicate orcPredicate = createOrcPredicate(types, values, DWRF, false);
-        Map<Subfield, TupleDomainFilter> filters = ImmutableMap.of(new Subfield("c"), stringIn(true, "A", "B", "C")); //ImmutableMap.of(1, stringIn(true, "10", "11"));
         Map<Integer, Type> includedColumns = IntStream.range(0, types.size())
                 .boxed()
                 .collect(toImmutableMap(Function.identity(), types::get));
@@ -1040,7 +1078,8 @@ public class TestSelectiveOrcReader
                 includedColumns,
                 outputColumns,
                 false,
-                new TestingHiveOrcAggregatedMemoryContext())) {
+                new TestingHiveOrcAggregatedMemoryContext(),
+                false)) {
             assertEquals(recordReader.getReaderPosition(), 0);
             assertEquals(recordReader.getFilePosition(), 0);
 
@@ -1059,11 +1098,11 @@ public class TestSelectiveOrcReader
                 page.getLoadedPage();
 
                 // The output block should be the second block
-                assertBlockPositions(page.getBlock(0), varcharDirectValues.subList(rowsProcessed, rowsProcessed + positionCount));
+                assertBlockPositions(page.getBlock(0), expectedValues.subList(rowsProcessed, rowsProcessed + positionCount));
 
                 rowsProcessed += positionCount;
             }
-            assertEquals(rowsProcessed, NUM_ROWS);
+            assertEquals(rowsProcessed, expectedValues.size());
         }
     }
 
@@ -1079,7 +1118,6 @@ public class TestSelectiveOrcReader
         int rowCount = 10000;
         int longStringLength = 5000;
         Random random = new Random();
-        long start = System.currentTimeMillis();
         for (int i = 0; i < rowCount; ++i) {
             if (i < MAX_BATCH_SIZE) {
                 StringBuilder builder = new StringBuilder();
@@ -1092,10 +1130,10 @@ public class TestSelectiveOrcReader
                 values.add("");
             }
         }
-        System.out.println(System.currentTimeMillis() - start);
-        writeOrcColumnsPresto(tempFile.getFile(), DWRF, NONE, Optional.empty(), types, ImmutableList.of(values), new OrcWriterStats());
 
-        try (OrcSelectiveRecordReader recordReader = createCustomOrcSelectiveRecordReader(tempFile, OrcEncoding.DWRF, OrcPredicate.TRUE, type, MAX_BATCH_SIZE, false)) {
+        writeOrcColumnsPresto(tempFile.getFile(), DWRF, NONE, Optional.empty(), types, ImmutableList.of(values), NOOP_WRITER_STATS);
+
+        try (OrcSelectiveRecordReader recordReader = createCustomOrcSelectiveRecordReader(tempFile, OrcEncoding.DWRF, OrcPredicate.TRUE, type, MAX_BATCH_SIZE, false, false)) {
             assertEquals(recordReader.getFileRowCount(), rowCount);
             assertEquals(recordReader.getReaderRowCount(), rowCount);
             assertEquals(recordReader.getFilePosition(), 0);
@@ -1126,12 +1164,11 @@ public class TestSelectiveOrcReader
     public void testHiddenConstantColumns()
             throws Exception
     {
-        Type type = BIGINT;
-        List<Type> types = ImmutableList.of(type);
+        List<Type> types = ImmutableList.of(BIGINT);
         List<List<?>> values = ImmutableList.of(ImmutableList.of(1L, 2L));
 
         TempFile tempFile = new TempFile();
-        writeOrcColumnsPresto(tempFile.getFile(), DWRF, ZSTD, Optional.empty(), types, values, new OrcWriterStats());
+        writeOrcColumnsPresto(tempFile.getFile(), DWRF, ZSTD, Optional.empty(), types, values, NOOP_WRITER_STATS);
 
         // Hidden columns like partition columns use negative indices (-13).
         int hiddenColumnIndex = -13;
@@ -1162,7 +1199,8 @@ public class TestSelectiveOrcReader
                 includedColumns,
                 outputColumns,
                 false,
-                systemMemoryUsage)) {
+                systemMemoryUsage,
+                false)) {
             Page page = recordReader.getNextPage();
             assertEquals(page.getPositionCount(), 1);
 
@@ -1414,7 +1452,12 @@ public class TestSelectiveOrcReader
     {
         assertEquals(block.getPositionCount(), expectedValues.size());
         for (int position = 0; position < block.getPositionCount(); position++) {
-            assertEquals(block.getSlice(position, 0, block.getSliceLength(position)), Slices.wrappedBuffer(expectedValues.get(position).getBytes()));
+            if (expectedValues.get(position) == null) {
+                assertTrue(block.isNull(position));
+            }
+            else {
+                assertEquals(block.getSlice(position, 0, block.getSliceLength(position)), Slices.wrappedBuffer(expectedValues.get(position).getBytes()));
+            }
         }
     }
 }

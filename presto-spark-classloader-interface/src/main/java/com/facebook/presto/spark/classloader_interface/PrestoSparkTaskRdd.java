@@ -57,8 +57,8 @@ import static scala.collection.JavaConversions.seqAsJavaList;
 public class PrestoSparkTaskRdd<T extends PrestoSparkTaskOutput>
         extends ZippedPartitionsBaseRDD<Tuple2<MutablePartitionId, T>>
 {
-    private List<String> shuffleInputFragmentIds;
     private List<RDD<Tuple2<MutablePartitionId, PrestoSparkMutableRow>>> shuffleInputRdds;
+    private List<String> shuffleInputFragmentIds;
     private PrestoSparkTaskSourceRdd taskSourceRdd;
     private PrestoSparkTaskProcessor<T> taskProcessor;
 
@@ -82,7 +82,7 @@ public class PrestoSparkTaskRdd<T extends PrestoSparkTaskOutput>
         return new PrestoSparkTaskRdd<>(context, taskSourceRdd, shuffleInputFragmentIds, shuffleInputRdds, taskProcessor);
     }
 
-    private PrestoSparkTaskRdd(
+    protected PrestoSparkTaskRdd(
             SparkContext context,
             Optional<PrestoSparkTaskSourceRdd> taskSourceRdd,
             List<String> shuffleInputFragmentIds,
@@ -144,5 +144,25 @@ public class PrestoSparkTaskRdd<T extends PrestoSparkTaskOutput>
         shuffleInputRdds = null;
         taskSourceRdd = null;
         taskProcessor = null;
+    }
+
+    public List<RDD<Tuple2<MutablePartitionId, PrestoSparkMutableRow>>> getShuffleInputRdds()
+    {
+        return shuffleInputRdds;
+    }
+
+    public PrestoSparkTaskSourceRdd getTaskSourceRdd()
+    {
+        return taskSourceRdd;
+    }
+
+    public List<String> getShuffleInputFragmentIds()
+    {
+        return shuffleInputFragmentIds;
+    }
+
+    public PrestoSparkTaskProcessor<T> getTaskProcessor()
+    {
+        return taskProcessor;
     }
 }

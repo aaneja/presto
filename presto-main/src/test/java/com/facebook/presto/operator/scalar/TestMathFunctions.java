@@ -694,6 +694,22 @@ public class TestMathFunctions
     }
 
     @Test
+    public void testSecureRandom()
+    {
+        // secure_random is non-deterministic
+        functionAssertions.tryEvaluateWithAll("secure_rand()", DOUBLE, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_random()", DOUBLE, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_random(0, 1000)", INTEGER, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_random(0, 3000000000)", BIGINT, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_random(-3000000000, -1)", BIGINT, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_rand(-3000000000, 3000000000)", BIGINT, TEST_SESSION);
+        functionAssertions.tryEvaluateWithAll("secure_random(DECIMAL '0.0', DECIMAL '1.0')", DOUBLE, TEST_SESSION);
+
+        assertInvalidFunction("secure_random(1, 1)", "upper bound must be greater than lower bound");
+        assertInvalidFunction("secure_random(DECIMAL '5.0', DECIMAL '-5.0')", "upper bound must be greater than lower bound");
+    }
+
+    @Test
     public void testRound()
     {
         assertFunction("round(TINYINT '3')", TINYINT, (byte) 3);
@@ -1326,7 +1342,6 @@ public class TestMathFunctions
 
     @Test
     public void testNormalCdf()
-            throws Exception
     {
         assertFunction("normal_cdf(0, 1, 1.96)", DOUBLE, 0.9750021048517796);
         assertFunction("normal_cdf(10, 9, 10)", DOUBLE, 0.5);
@@ -1345,7 +1360,6 @@ public class TestMathFunctions
 
     @Test
     public void testBinomialCdf()
-            throws Exception
     {
         assertFunction("binomial_cdf(5, 0.5, 5)", DOUBLE, 1.0);
         assertFunction("binomial_cdf(5, 0.5, 0)", DOUBLE, 0.03125);
@@ -1359,7 +1373,6 @@ public class TestMathFunctions
 
     @Test
     public void testInverseBinomialCdf()
-            throws Exception
     {
         assertFunction("inverse_binomial_cdf(20, 0.5, 0.5)", INTEGER, 10);
         assertFunction("inverse_binomial_cdf(20, 0.5, 0.0)", INTEGER, 0);
@@ -1388,7 +1401,6 @@ public class TestMathFunctions
 
     @Test
     public void testBetaCdf()
-            throws Exception
     {
         assertFunction("beta_cdf(3, 3.6, 0.0)", DOUBLE, 0.0);
         assertFunction("beta_cdf(3, 3.6, 1.0)", DOUBLE, 1.0);
@@ -1414,7 +1426,6 @@ public class TestMathFunctions
 
     @Test
     public void testCauchyCdf()
-            throws Exception
     {
         assertFunction("cauchy_cdf(0.0, 1.0, 0.0)", DOUBLE, 0.5);
         assertFunction("cauchy_cdf(0.0, 1.0, 1.0)", DOUBLE, 0.75);
@@ -1440,7 +1451,6 @@ public class TestMathFunctions
 
     @Test
     public void testChiSquaredCdf()
-            throws Exception
     {
         assertFunction("chi_squared_cdf(3, 0.0)", DOUBLE, 0.0);
         assertFunction("round(chi_squared_cdf(3, 1.0), 4)", DOUBLE, 0.1987);
@@ -1449,6 +1459,88 @@ public class TestMathFunctions
 
         assertInvalidFunction("chi_squared_cdf(-3, 0.3)", "df must be greater than 0");
         assertInvalidFunction("chi_squared_cdf(3, -10)", "value must non-negative");
+    }
+
+    @Test
+    public void testInverseFCdf()
+    {
+        assertFunction("inverse_f_cdf(2.0, 5.0, 0.0)", DOUBLE, 0.0);
+        assertFunction("round(inverse_f_cdf(2.0, 5.0, 0.5), 4)", DOUBLE, 0.7988);
+        assertFunction("round(inverse_f_cdf(2.0, 5.0, 0.9), 4)", DOUBLE, 3.7797);
+
+        assertInvalidFunction("inverse_f_cdf(0, 3, 0.5)", "numerator df must be greater than 0");
+        assertInvalidFunction("inverse_f_cdf(3, 0, 0.5)", "denominator df must be greater than 0");
+        assertInvalidFunction("inverse_f_cdf(3, 5, -0.1)", "p must be in the interval [0, 1]");
+        assertInvalidFunction("inverse_f_cdf(3, 5, 1.1)", "p must be in the interval [0, 1]");
+    }
+
+    @Test
+    public void testFCdf()
+    {
+        assertFunction("round(f_cdf(2.0, 5.0, 0.7988), 4)", DOUBLE, 0.5);
+        assertFunction("round(f_cdf(2.0, 5.0, 3.7797), 4)", DOUBLE, 0.9);
+
+        assertInvalidFunction("f_cdf(0, 3, 0.5)", "numerator df must be greater than 0");
+        assertInvalidFunction("f_cdf(3, 0, 0.5)", "denominator df must be greater than 0");
+        assertInvalidFunction("f_cdf(3, 5, -0.1)", "value must non-negative");
+    }
+
+    @Test
+    public void testInverseGammaCdf()
+    {
+        assertFunction("inverse_gamma_cdf(3, 3.6, 0.0)", DOUBLE, 0.0);
+        assertFunction("round(inverse_gamma_cdf(3, 4, 0.99), 3)", DOUBLE, 33.624);
+        assertFunction("round(inverse_gamma_cdf(3, 4, 0.50), 3)", DOUBLE, 10.696);
+        // Gamma with shape 10k/2 and scale 2 is chisquare with df=10k, which is approximatly Normal with mu=10k
+        // Hence, we expect that the quantile will be close to 10k, as we indeed get:
+        assertFunction("round(inverse_gamma_cdf(10000.0/2, 2.0, 0.50), 3)", DOUBLE, 9999.333);
+
+        assertInvalidFunction("inverse_gamma_cdf(0, 3, 0.5)", "shape must be greater than 0");
+        assertInvalidFunction("inverse_gamma_cdf(3, 0, 0.5)", "scale must be greater than 0");
+        assertInvalidFunction("inverse_gamma_cdf(3, 5, -0.1)", "p must be in the interval [0, 1]");
+        assertInvalidFunction("inverse_gamma_cdf(3, 5, 1.1)", "p must be in the interval [0, 1]");
+    }
+
+    @Test
+    public void testGammaCdf()
+    {
+        assertFunction("round(gamma_cdf(3.0, 4.0, 0.0), 10)", DOUBLE, 0.0);
+        assertFunction("round(gamma_cdf(3.0, 4.0, 1.0), 3)", DOUBLE, 0.002);
+        assertFunction("round(gamma_cdf(3.0, 4.0, 5.0), 3)", DOUBLE, 0.132);
+        assertFunction("round(gamma_cdf(3.0, 4.0, 10.0), 3)", DOUBLE, 0.456);
+        // Gamma with shape 10k/2 and scale 2 is chisquare with df=10k, which is approximatly Normal with mu=10k
+        // Hence, we expect that the CDF of 10k will be close to 0.5, as we indeed get:
+        assertFunction("round(gamma_cdf(10000.0/2, 2.0, 10000.0), 3)", DOUBLE, 0.502);
+
+        assertInvalidFunction("gamma_cdf(0, 3, 0.5)", "shape must be greater than 0");
+        assertInvalidFunction("gamma_cdf(3, 0, 0.5)", "scale must be greater than 0");
+        assertInvalidFunction("gamma_cdf(3, 5, -0.1)", "value must be greater than, or equal to, 0");
+    }
+
+    @Test
+    public void testInverseLaplaceCdf()
+    {
+        assertFunction("inverse_laplace_cdf(5, 1, 0.5)", DOUBLE, 5.0);
+        assertFunction("inverse_laplace_cdf(5, 2, 0.5)", DOUBLE, 5.0);
+        assertFunction("round(inverse_laplace_cdf(5, 2, 0.6), 4)", DOUBLE, 5.0 + 0.4463);
+        assertFunction("round(inverse_laplace_cdf(-5, 2, 0.4), 4)", DOUBLE, -5.0 - 0.4463);
+
+        assertInvalidFunction("inverse_laplace_cdf(5, 2, -0.1)", "p must be in the interval [0, 1]");
+        assertInvalidFunction("inverse_laplace_cdf(5, 2, 1.1)", "p must be in the interval [0, 1]");
+        assertInvalidFunction("inverse_laplace_cdf(5, 0, 0.5)", "scale must be greater than 0");
+        assertInvalidFunction("inverse_laplace_cdf(5, -1, 0.5)", "scale must be greater than 0");
+    }
+
+    @Test
+    public void testLaplaceCdf()
+    {
+        assertFunction("laplace_cdf(4, 1, 4)", DOUBLE, 0.5);
+        assertFunction("laplace_cdf(4, 2, 4.0)", DOUBLE, 0.5);
+        assertFunction("round(laplace_cdf(4, 2, 4.0 - 0.4463), 2)", DOUBLE, 0.4);
+        assertFunction("round(laplace_cdf(-4, 2, -4.0 + 0.4463), 4)", DOUBLE, 0.6);
+
+        assertInvalidFunction("laplace_cdf(5, 0, 10)", "scale must be greater than 0");
+        assertInvalidFunction("laplace_cdf(5, -1, 10)", "scale must be greater than 0");
     }
 
     @Test
@@ -1489,7 +1581,6 @@ public class TestMathFunctions
 
     @Test
     public void testWeibullCdf()
-            throws Exception
     {
         assertFunction("weibull_cdf(1.0, 1.0, 0.0)", DOUBLE, 0.0);
         assertFunction("weibull_cdf(1.0, 1.0, 40.0)", DOUBLE, 1.0);

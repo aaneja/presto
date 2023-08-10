@@ -12,11 +12,29 @@ Presto welcomes contributions from everyone.
 
 Contributions to Presto should be made in the form of GitHub pull request submissions and reviews. 
 
-Each pull request submission will be reviewed by a contributor or [committer](https://github.com/prestodb/presto/wiki/committers) 
-in the project. Only committers may merge a pull request. Large contributions should have an associated Github issue.
+Each pull request submission will be reviewed by a contributor or committer in the project.  In order for a PR to be eligible to be merged, a committer for the appropriate code must approve the code. Once approved by a committer, the PR may be merged by anyone. 
 
 Pull request reviews are encouraged for anyone in the community who would like to contribute to Presto, and are
 expected from contributors and committers in at least equal proportion to their code contributions.
+
+Large contributions should have an associated GitHub issue.
+
+## Code Style
+
+We recommend you use IntelliJ as your IDE. The code style template for the project can be found in the [codestyle](https://github.com/airlift/codestyle) repository along with our general programming and Java guidelines. In addition to those you should also adhere to the following:
+
+* Alphabetize sections in the documentation source files (both in table of contents files and other regular documentation files). In general, alphabetize methods/variables/sections if such ordering already exists in the surrounding code.
+* When appropriate, use the Java 8 stream API. However, note that the stream implementation does not perform well so avoid using it in inner loops or otherwise performance sensitive sections.
+* Categorize errors when throwing exceptions. For example, PrestoException takes an error code as an argument, `PrestoException(HIVE_TOO_MANY_OPEN_PARTITIONS)`. This categorization lets you generate reports so you can monitor the frequency of various failures.
+* Ensure that all files have the appropriate license header; you can generate the license by running `mvn license:format`.
+* Consider using String formatting (printf style formatting using the Java `Formatter` class): `format("Session property %s is invalid: %s", name, value)` (note that `format()` should always be statically imported). Sometimes, if you only need to append something, consider using the `+` operator.
+* Avoid using the ternary operator except for trivial expressions.
+* Use an assertion from Airlift's `Assertions` class if there is one that covers your case rather than writing the assertion by hand. Over time we may move over to more fluent assertions like AssertJ.
+* When writing a Git commit message, follow these [guidelines](https://chris.beams.io/posts/git-commit/).
+
+## Committers
+
+Committers for this project are documented in the project's [CODEOWNERS](CODEOWNERS) file.
 
 ## Pull Request Checklist
 

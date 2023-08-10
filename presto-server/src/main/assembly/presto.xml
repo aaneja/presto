@@ -121,10 +121,6 @@
             <outputDirectory>plugin/ml</outputDirectory>
         </fileSet>
         <fileSet>
-            <directory>${project.build.directory}/dependency/presto-geospatial-${project.version}</directory>
-            <outputDirectory>plugin/geospatial</outputDirectory>
-        </fileSet>
-        <fileSet>
             <directory>${project.build.directory}/dependency/presto-mysql-${project.version}</directory>
             <outputDirectory>plugin/mysql</outputDirectory>
         </fileSet>
@@ -147,10 +143,6 @@
         <fileSet>
             <directory>${project.build.directory}/dependency/presto-sqlserver-${project.version}</directory>
             <outputDirectory>plugin/sqlserver</outputDirectory>
-        </fileSet>
-        <fileSet>
-            <directory>${project.build.directory}/dependency/presto-raptor-${project.version}</directory>
-            <outputDirectory>plugin/raptor</outputDirectory>
         </fileSet>
         <fileSet>
             <directory>${project.build.directory}/dependency/presto-redis-${project.version}</directory>
@@ -207,6 +199,14 @@
         <fileSet>
             <directory>${project.build.directory}/dependency/presto-delta-${project.version}</directory>
             <outputDirectory>plugin/delta</outputDirectory>
+        </fileSet>
+        <fileSet>
+            <directory>${project.build.directory}/dependency/presto-hudi-${project.version}</directory>
+            <outputDirectory>plugin/hudi</outputDirectory>
+        </fileSet>
+        <fileSet>
+            <directory>${project.build.directory}/dependency/presto-clickhouse-${project.version}</directory>
+            <outputDirectory>plugin/clickhouse</outputDirectory>
         </fileSet>
     </fileSets>
 </assembly>

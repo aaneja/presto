@@ -99,7 +99,7 @@ public class EffectivePredicateExtractor
             this.domainTranslator = requireNonNull(domainTranslator, "domainTranslator is null");
             this.functionManger = requireNonNull(functionAndTypeManager);
             this.determinismEvaluator = new RowExpressionDeterminismEvaluator(functionAndTypeManager);
-            this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, new FunctionResolution(functionAndTypeManager), functionAndTypeManager);
+            this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, new FunctionResolution(functionAndTypeManager.getFunctionAndTypeResolver()), functionAndTypeManager);
         }
 
         @Override
@@ -414,7 +414,7 @@ public class EffectivePredicateExtractor
                     .build();
 
             ImmutableList.Builder<RowExpression> effectiveConjuncts = ImmutableList.builder();
-            for (RowExpression conjunct : new EqualityInference.Builder(functionManger).nonInferrableConjuncts(expression)) {
+            for (RowExpression conjunct : new EqualityInference.Builder(functionManger).nonInferableConjuncts(expression)) {
                 if (determinismEvaluator.isDeterministic(conjunct)) {
                     RowExpression rewritten = equalityInference.rewriteExpression(conjunct, in(variables));
                     if (rewritten != null) {

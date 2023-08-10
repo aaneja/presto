@@ -183,7 +183,7 @@ public class TestSqlFunctions
         assertEquals(rows.getTypes().get(0).getDisplayName(), "testing.enum.mood");
         assertEquals(rows.getMaterializedRows().get(0).getFields().get(0), -2L);
 
-        assertQueryFails("CREATE FUNCTION testing.test.invalid(e testing.enum.not_exist) RETURNS boolean RETURN e IS NOT NULL", ".*Type testing.enum.not_exist not found");
+        assertQueryFails("CREATE FUNCTION testing.test.invalid(e testing.enum.not_exist) RETURNS boolean RETURN e IS NOT NULL", ".*Unknown type testing.enum.not_exist");
         assertQueryFails("CREATE FUNCTION testing.test.is_uk(country testing.enum.country) RETURNS boolean RETURN country = testing.enum.country.UK", ".*'testing.enum.country.uk' cannot be resolved");
     }
 
@@ -535,6 +535,30 @@ public class TestSqlFunctions
     {
         assertQuerySucceeds("CREATE FUNCTION testing.test.foo(x varchar) RETURNS varchar LANGUAGE JAVA EXTERNAL");
         assertQueryFails("SELECT reduce(a, '', (s, x) -> s || testing.test.foo(x), s -> s) from (VALUES (array['a', 'b'])) t(a)", ".*External functions in Lambda expression is not supported:.*");
+    }
+
+    @Test
+    void testNestedSqlFunctionsWithLambdas()
+    {
+        assertQuerySucceeds(
+                "WITH tmp AS (\n" +
+                "    SELECT\n" +
+                "        1 AS id,\n" +
+                "        MAP(ARRAY['a', 'b'], ARRAY[3.0, 4.0]) AS hist\n" +
+                "\n" +
+                "    UNION ALL\n" +
+                "\n" +
+                "    SELECT\n" +
+                "        2 AS id,\n" +
+                "        MAP(ARRAY['b', 'c'], ARRAY[4.0, 5.0]) AS hist\n" +
+                ")\n" +
+                "SELECT\n" +
+                "    ARRAY_SUM(\n" +
+                "        MAP_VALUES(\n" +
+                "            (MAP_NORMALIZE(hist)\n" +
+                "        )\n" +
+                "    ))\n" +
+                "FROM tmp");
     }
 
     private Session createSessionWithTempFunctionFoo()

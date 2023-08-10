@@ -13,7 +13,10 @@
  */
 package com.facebook.presto.sql.analyzer;
 
-import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.Session;
+import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.operator.aggregation.ApproximateSetAggregation;
+import com.facebook.presto.operator.aggregation.DefaultApproximateCountDistinctAggregation;
 import com.facebook.presto.spi.PrestoWarning;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.sql.planner.ParameterRewriter;
@@ -30,6 +33,7 @@ import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CurrentTime;
 import com.facebook.presto.sql.tree.DereferenceExpression;
+import com.facebook.presto.sql.tree.DoubleLiteral;
 import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
@@ -69,6 +73,7 @@ import javax.annotation.Nullable;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -107,23 +112,32 @@ class AggregationAnalyzer
     private final List<Expression> expressions;
     private final Multimap<NodeRef<Expression>, FieldId> columnReferences;
 
-    private final Metadata metadata;
+    private final FunctionAndTypeResolver functionAndTypeResolver;
     private final Analysis analysis;
 
     private final Scope sourceScope;
     private final Optional<Scope> orderByScope;
     private final WarningCollector warningCollector;
+    private final Session session;
     private final FunctionResolution functionResolution;
 
     public static void verifySourceAggregations(
             List<Expression> groupByExpressions,
             Scope sourceScope,
             Expression expression,
-            Metadata metadata,
+            FunctionAndTypeResolver functionAndTypeResolver,
             Analysis analysis,
-            WarningCollector warningCollector)
+            WarningCollector warningCollector,
+            Session session)
     {
-        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.empty(), metadata, analysis, warningCollector);
+        AggregationAnalyzer analyzer = new AggregationAnalyzer(
+                groupByExpressions,
+                sourceScope,
+                Optional.empty(),
+                functionAndTypeResolver,
+                analysis,
+                warningCollector,
+                session);
         analyzer.analyze(expression);
     }
 
@@ -132,29 +146,39 @@ class AggregationAnalyzer
             Scope sourceScope,
             Scope orderByScope,
             Expression expression,
-            Metadata metadata,
+            FunctionAndTypeResolver functionAndTypeResolver,
             Analysis analysis,
-            WarningCollector warningCollector)
+            WarningCollector warningCollector,
+            Session session)
     {
-        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.of(orderByScope), metadata, analysis, warningCollector);
+        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.of(orderByScope), functionAndTypeResolver, analysis, warningCollector, session);
         analyzer.analyze(expression);
     }
 
-    private AggregationAnalyzer(List<Expression> groupByExpressions, Scope sourceScope, Optional<Scope> orderByScope, Metadata metadata, Analysis analysis, WarningCollector warningCollector)
+    private AggregationAnalyzer(
+            List<Expression> groupByExpressions,
+            Scope sourceScope,
+            Optional<Scope> orderByScope,
+            FunctionAndTypeResolver functionAndTypeResolver,
+            Analysis analysis,
+            WarningCollector warningCollector,
+            Session session)
     {
         requireNonNull(groupByExpressions, "groupByExpressions is null");
         requireNonNull(sourceScope, "sourceScope is null");
         requireNonNull(orderByScope, "orderByScope is null");
-        requireNonNull(metadata, "metadata is null");
+        requireNonNull(functionAndTypeResolver, "functionAndTypeResolver is null");
         requireNonNull(analysis, "analysis is null");
         requireNonNull(warningCollector, "warningCollector is null");
+        requireNonNull(session, "session is null");
 
         this.sourceScope = sourceScope;
-        this.warningCollector = warningCollector;
         this.orderByScope = orderByScope;
-        this.metadata = metadata;
+        this.functionAndTypeResolver = functionAndTypeResolver;
         this.analysis = analysis;
-        this.functionResolution = new FunctionResolution(metadata.getFunctionAndTypeManager());
+        this.warningCollector = warningCollector;
+        this.session = session;
+        this.functionResolution = new FunctionResolution(functionAndTypeResolver);
         this.expressions = groupByExpressions.stream()
                 .map(e -> ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(analysis.getParameters()), e))
                 .collect(toImmutableList());
@@ -328,14 +352,45 @@ class AggregationAnalyzer
         @Override
         protected Boolean visitFunctionCall(FunctionCall node, Void context)
         {
-            if (metadata.getFunctionAndTypeManager().getFunctionMetadata(analysis.getFunctionHandle(node)).getFunctionKind() == AGGREGATE) {
+            if (functionAndTypeResolver.getFunctionMetadata(analysis.getFunctionHandle(node)).getFunctionKind() == AGGREGATE) {
                 if (functionResolution.isCountFunction(analysis.getFunctionHandle(node)) && node.isDistinct()) {
                     warningCollector.add(new PrestoWarning(
                             PERFORMANCE_WARNING,
                             "COUNT(DISTINCT xxx) can be a very expensive operation when the cardinality is high for xxx. In most scenarios, using approx_distinct instead would be enough"));
                 }
+                if (functionResolution.isApproximateCountDistinctFunction(analysis.getFunctionHandle(node))) {
+                    double maxStandardError = DefaultApproximateCountDistinctAggregation.DEFAULT_STANDARD_ERROR;
+                    double lowestMaxStandardError = SystemSessionProperties.getHyperloglogStandardErrorWarningThreshold(session);
+                    // maxStandardError is supplied
+                    if (node.getArguments().size() > 1) {
+                        Expression maxStandardErrorExpr = node.getArguments().get(1);
+                        if (maxStandardErrorExpr instanceof DoubleLiteral) {
+                            maxStandardError = ((DoubleLiteral) maxStandardErrorExpr).getValue();
+                        }
+                    }
+                    if (maxStandardError <= lowestMaxStandardError) {
+                        warningCollector.add(new PrestoWarning(PERFORMANCE_WARNING, String.format("approx_distinct can produce low-precision results with the current standard error: %.4f (<=%.4f)", maxStandardError, lowestMaxStandardError)));
+                    }
+                }
+                if (functionResolution.isApproximateSetFunction(analysis.getFunctionHandle(node))) {
+                    double maxStandardError = ApproximateSetAggregation.DEFAULT_STANDARD_ERROR;
+                    double lowestMaxStandardError = SystemSessionProperties.getHyperloglogStandardErrorWarningThreshold(session);
+                    // maxStandardError is supplied
+                    if (node.getArguments().size() > 1) {
+                        Expression maxStandardErrorExpr = node.getArguments().get(1);
+                        if (maxStandardErrorExpr instanceof DoubleLiteral) {
+                            maxStandardError = ((DoubleLiteral) maxStandardErrorExpr).getValue();
+                        }
+                    }
+                    if (maxStandardError <= lowestMaxStandardError) {
+                        warningCollector.add(new PrestoWarning(PERFORMANCE_WARNING, String.format("approx_set can produce low-precision results with the current standard error: %.4f (<=%.4f)", maxStandardError, lowestMaxStandardError)));
+                    }
+                }
                 if (!node.getWindow().isPresent()) {
-                    List<FunctionCall> aggregateFunctions = extractAggregateFunctions(analysis.getFunctionHandles(), node.getArguments(), metadata.getFunctionAndTypeManager());
+                    List<FunctionCall> aggregateFunctions = extractAggregateFunctions(
+                            analysis.getFunctionHandles(),
+                            node.getArguments(),
+                            functionAndTypeResolver);
                     List<FunctionCall> windowFunctions = extractWindowFunctions(node.getArguments());
 
                     if (!aggregateFunctions.isEmpty()) {
@@ -624,9 +679,9 @@ class AggregationAnalyzer
             if (analysis.isDescribe()) {
                 return true;
             }
-            List<Expression> parameters = analysis.getParameters();
+            Map<NodeRef<Parameter>, Expression> parameters = analysis.getParameters();
             checkArgument(node.getPosition() < parameters.size(), "Invalid parameter number %s, max values is %s", node.getPosition(), parameters.size() - 1);
-            return process(parameters.get(node.getPosition()), context);
+            return process(parameters.get(NodeRef.of(node)), context);
         }
 
         public Boolean visitGroupingOperation(GroupingOperation node, Void context)

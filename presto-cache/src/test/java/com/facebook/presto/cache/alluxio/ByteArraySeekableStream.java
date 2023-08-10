@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.cache.alluxio;
 
-import alluxio.exception.ExceptionMessage;
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.Seekable;
 
@@ -47,6 +46,7 @@ class ByteArraySeekableStream
     public int read(long position, byte[] buffer, int offset, int length)
             throws IOException
     {
+        seek(position);
         return read(buffer, 0, buffer.length);
     }
 
@@ -93,9 +93,8 @@ class ByteArraySeekableStream
 
     @Override
     public boolean seekToNewSource(long targetPosition)
-            throws IOException
     {
-        throw new IOException(ExceptionMessage.NOT_SUPPORTED.getMessage());
+        throw new UnsupportedOperationException();
     }
 
     @Override

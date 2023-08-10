@@ -5,6 +5,11 @@ Properties Reference
 This section describes the most important config properties that
 may be used to tune Presto or alter its behavior when required.
 
+The following pages are not a complete list of all configuration and
+session properties available in Presto, and do not include any connector-specific
+catalog configuration properties. For more information on catalog configuration
+properties, refer to the :doc:`connector documentation </connector/>`.
+
 .. contents::
     :local:
     :backlinks: none
@@ -18,7 +23,7 @@ General Properties
 
     * **Type:** ``string``
     * **Allowed values:** ``AUTOMATIC``, ``PARTITIONED``, ``BROADCAST``
-    * **Default value:** ``PARTITIONED``
+    * **Default value:** ``AUTOMATIC``
 
     The type of distributed join to use.  When set to ``PARTITIONED``, presto will
     use hash distributed joins.  When set to ``BROADCAST``, it will broadcast the
@@ -70,7 +75,7 @@ Memory Management Properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     * **Type:** ``data size``
-    * **Default value:** ``JVM max memory * 0.3``
+    * **Default value:** ``query.max-memory-per-node * 2``
 
     This is the max amount of user and system memory a query can use on a worker.
     System memory is allocated during execution for things that are not directly
@@ -278,6 +283,13 @@ Spilling Properties
     this property defines the threshold at which to trigger spilling for a task.  This property
     is ignored for any other spilling strategy.
 
+``experimental.max-revocable-memory-per-node``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    * **Type:** ``data size``
+    * **Default value:** ``16GB``
+
+    This property defines the amount of revocable memory a query can use on each node
+
 ``experimental.spiller-spill-path``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -333,6 +345,7 @@ Spilling Properties
     * **Default value:** ``4 MB``
 
     Limit for memory used for unspilling a single aggregation operator instance.
+    This config property can be overridden by the ``aggregation_operator_unspill_memory_limit`` session property
 
 ``experimental.spill-compression-enabled``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -351,6 +364,30 @@ Spilling Properties
     Enables using a randomly generated secret key (per spill file) to encrypt and decrypt
     data spilled to disk
 
+``experimental.spiller.single-stream-spiller-choice``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``String``
+    * **Default value:** ``LOCAL_FILE``
+
+    The Single Stream Spiller to be used when spilling is enabled. There are two options
+    LOCAL_FILE (default) and TEMP_STORAGE.
+
+``experimental.spiller.spiller-temp-storage``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``String``
+    * **Default value:** ``local``
+
+    Temp storage used by spiller when ``experimental.spiller.single-stream-spiller-choice`` is set to TEMP_STORAGE
+
+``experimental.temp-storage-buffer-size``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``Data Size``
+    * **Default value:** ``4KB``
+
+    Size of buffer when ``experimental.spiller.single-stream-spiller-choice`` is set to TEMP_STORAGE
 
 Exchange Properties
 -------------------
@@ -710,7 +747,7 @@ Optimizer Properties
 
     * **Type:** ``string``
     * **Allowed values:** ``AUTOMATIC``, ``ELIMINATE_CROSS_JOINS``, ``NONE``
-    * **Default value:** ``ELIMINATE_CROSS_JOINS``
+    * **Default value:** ``AUTOMATIC``
 
     The join reordering strategy to use.  ``NONE`` maintains the order the tables are listed in the
     query.  ``ELIMINATE_CROSS_JOINS`` reorders joins to eliminate cross joins where possible and
@@ -731,6 +768,36 @@ Optimizer Properties
 
     .. warning:: The number of possible join orders scales factorially with the number of relations,
                  so increasing this value can cause serious performance issues.
+
+``optimizer.use-defaults-for-correlated-aggregation-pushdown-through-outer-joins``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``boolean``
+    * **Default value:** ``true``
+
+    Aggregations can sometimes be pushed below outer joins (see optimizer.push-aggregation-through-join).
+    In general, aggregate functions have custom null-handling behavior. In order to correctly process the
+    null padded rows that may be produced by the outer join, the optimizer introduces a subsequent cross
+    join with corresponding aggregations over a single null value and then coalesces the aggregations
+    from the join output with these null aggregated values.
+
+    For certain aggregate functions (those that ignore nulls, ``COUNT``, etc) the cross join may be
+    avoided and the default/known aggregate value over ``NULL`` may be coalesced  directly with the aggregate
+    outputs of the join. This optimization eliminates the cross join, may convert the outer join into an inner
+    join and thereby produces more optimal plans.
+
+
+Planner Properties
+--------------------------------------
+
+``planner.query-analyzer-timeout``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``duration``
+    * **Default value:** ``3m``
+
+    Maximum running time for the query analyzer in case the processing takes too long or is stuck in an infinite loop.
+    When timeout expires the planner thread is interrupted and throws exception.
 
 Regular Expression Function Properties
 --------------------------------------

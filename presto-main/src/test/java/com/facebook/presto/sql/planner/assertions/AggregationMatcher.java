@@ -93,8 +93,10 @@ public class AggregationMatcher
             return NO_MATCH;
         }
 
+        Set<Symbol> maskToAlias = masks.keySet().stream().map(x -> new Symbol(symbolAliases.get(x.getName()).getName())).collect(Collectors.toSet());
+
         for (VariableReferenceExpression variable : aggregationsWithMask) {
-            if (!masks.keySet().contains(new Symbol(variable.getName()))) {
+            if (!masks.keySet().contains(new Symbol(variable.getName())) && !maskToAlias.contains(new Symbol(variable.getName()))) {
                 return NO_MATCH;
             }
         }
@@ -136,7 +138,7 @@ public class AggregationMatcher
                 .add("groupingSets", groupingSets)
                 .add("preGroupedSymbols", preGroupedSymbols)
                 .add("masks", masks)
-                .add("groudId", groupId)
+                .add("groupId", groupId)
                 .add("step", step)
                 .toString();
     }

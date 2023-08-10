@@ -34,10 +34,10 @@ import java.lang.invoke.MethodHandle;
 
 import static com.facebook.presto.common.function.OperatorType.XX_HASH_64;
 
-@AggregationFunction("approx_distinct")
+@AggregationFunction(value = "approx_distinct", isCalledOnNullInput = true)
 public final class DefaultApproximateCountDistinctAggregation
 {
-    private static final double DEFAULT_STANDARD_ERROR = 0.023;
+    public static final double DEFAULT_STANDARD_ERROR = 0.023;
 
     private DefaultApproximateCountDistinctAggregation() {}
 

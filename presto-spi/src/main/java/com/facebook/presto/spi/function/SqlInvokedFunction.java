@@ -24,10 +24,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static com.facebook.presto.spi.function.FunctionKind.AGGREGATE;
 import static com.facebook.presto.spi.function.FunctionKind.SCALAR;
 import static com.facebook.presto.spi.function.FunctionVersion.notVersioned;
 import static com.facebook.presto.spi.function.SqlFunctionVisibility.PUBLIC;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.collectingAndThen;
 import static java.util.stream.Collectors.joining;
@@ -47,6 +49,11 @@ public class SqlInvokedFunction
     private final FunctionVersion functionVersion;
     private final Optional<SqlFunctionHandle> functionHandle;
 
+    /**
+     * Metadata required for Aggregation Functions
+     */
+    private final Optional<AggregationFunctionMetadata> aggregationMetadata;
+
     @JsonCreator
     public SqlInvokedFunction(
             @JsonProperty("parameters") List<Parameter> parameters,
@@ -64,8 +71,10 @@ public class SqlInvokedFunction
         this.functionId = functionId;
         this.functionVersion = notVersioned();
         this.functionHandle = Optional.empty();
+        this.aggregationMetadata = Optional.empty();
     }
 
+    // This constructor creates a SCALAR SqlInvokedFunction
     public SqlInvokedFunction(
             QualifiedObjectName functionName,
             List<Parameter> parameters,
@@ -75,6 +84,34 @@ public class SqlInvokedFunction
             String body,
             FunctionVersion version)
     {
+        this(functionName, parameters, emptyList(), returnType, description, routineCharacteristics, body, version, SCALAR, Optional.empty());
+    }
+
+    public SqlInvokedFunction(
+            QualifiedObjectName functionName,
+            List<Parameter> parameters,
+            TypeSignature returnType,
+            String description,
+            RoutineCharacteristics routineCharacteristics,
+            String body,
+            FunctionVersion version,
+            FunctionKind kind,
+            Optional<AggregationFunctionMetadata> aggregationMetadata)
+    {
+        this(functionName, parameters, emptyList(), returnType, description, routineCharacteristics, body, version, kind, aggregationMetadata);
+    }
+    public SqlInvokedFunction(
+            QualifiedObjectName functionName,
+            List<Parameter> parameters,
+            List<TypeVariableConstraint> typeVariableConstraints,
+            TypeSignature returnType,
+            String description,
+            RoutineCharacteristics routineCharacteristics,
+            String body,
+            FunctionVersion version,
+            FunctionKind kind,
+            Optional<AggregationFunctionMetadata> aggregationMetadata)
+    {
         this.parameters = requireNonNull(parameters, "parameters is null");
         this.description = requireNonNull(description, "description is null");
         this.routineCharacteristics = requireNonNull(routineCharacteristics, "routineCharacteristics is null");
@@ -83,10 +120,16 @@ public class SqlInvokedFunction
         List<TypeSignature> argumentTypes = parameters.stream()
                 .map(Parameter::getType)
                 .collect(collectingAndThen(toList(), Collections::unmodifiableList));
-        this.signature = new Signature(functionName, SCALAR, returnType, argumentTypes);
+
+        this.signature = new Signature(functionName, kind, typeVariableConstraints, emptyList(), returnType, argumentTypes, false);
         this.functionId = new SqlFunctionId(functionName, argumentTypes);
         this.functionVersion = requireNonNull(version, "version is null");
         this.functionHandle = version.hasVersion() ? Optional.of(new SqlFunctionHandle(this.functionId, version.toString())) : Optional.empty();
+        this.aggregationMetadata = requireNonNull(aggregationMetadata, "aggregationMetadata is null");
+
+        if ((kind == AGGREGATE && !aggregationMetadata.isPresent()) || (kind != AGGREGATE && aggregationMetadata.isPresent())) {
+            throw new IllegalArgumentException("aggregationMetadata must be present for aggregation functions and absent otherwise");
+        }
     }
 
     public SqlInvokedFunction withVersion(String version)
@@ -101,7 +144,9 @@ public class SqlInvokedFunction
                 description,
                 routineCharacteristics,
                 body,
-                FunctionVersion.withVersion(version));
+                FunctionVersion.withVersion(version),
+                signature.getKind(),
+                aggregationMetadata);
     }
 
     @Override
@@ -175,6 +220,11 @@ public class SqlInvokedFunction
         return functionVersion;
     }
 
+    public Optional<AggregationFunctionMetadata> getAggregationMetadata()
+    {
+        return aggregationMetadata;
+    }
+
     public SqlFunctionHandle getRequiredFunctionHandle()
     {
         Optional<? extends SqlFunctionHandle> functionHandle = getFunctionHandle();
@@ -194,14 +244,14 @@ public class SqlInvokedFunction
 
     public boolean hasSameDefinitionAs(SqlInvokedFunction function)
     {
-        if (function == null) {
-            throw new IllegalArgumentException("function is null");
-        }
+        requireNonNull(function, "function is null");
+
         return Objects.equals(parameters, function.parameters)
                 && Objects.equals(description, function.description)
                 && Objects.equals(routineCharacteristics, function.routineCharacteristics)
                 && Objects.equals(body, function.body)
-                && Objects.equals(signature, function.signature);
+                && Objects.equals(signature, function.signature)
+                && Objects.equals(aggregationMetadata, function.aggregationMetadata);
     }
 
     @Override
@@ -220,7 +270,8 @@ public class SqlInvokedFunction
                 && Objects.equals(body, o.body)
                 && Objects.equals(signature, o.signature)
                 && Objects.equals(functionId, o.functionId)
-                && Objects.equals(functionHandle, o.functionHandle);
+                && Objects.equals(functionHandle, o.functionHandle)
+                && Objects.equals(aggregationMetadata, o.aggregationMetadata);
     }
 
     @Override
@@ -233,13 +284,15 @@ public class SqlInvokedFunction
     public String toString()
     {
         return format(
-                "%s(%s):%s%s {%s} %s",
+                "%s(%s):%s%s [%s%s] {%s} %s",
                 signature.getName(),
                 parameters.stream()
                         .map(Object::toString)
                         .collect(joining(",")),
                 signature.getReturnType(),
                 hasVersion() ? ":" + getVersion() : "",
+                signature.getKind(),
+                signature.getKind() == AGGREGATE ? ", " + getAggregationMetadata().get() : "",
                 body,
                 routineCharacteristics);
     }

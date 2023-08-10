@@ -21,6 +21,10 @@ import com.facebook.airlift.stats.Distribution.DistributionSnapshot;
 import com.facebook.presto.SessionRepresentation;
 import com.facebook.presto.client.NodeVersion;
 import com.facebook.presto.common.RuntimeStats;
+import com.facebook.presto.common.transaction.TransactionId;
+import com.facebook.presto.cost.HistoryBasedPlanStatisticsManager;
+import com.facebook.presto.cost.HistoryBasedPlanStatisticsTracker;
+import com.facebook.presto.cost.StatsAndCosts;
 import com.facebook.presto.eventlistener.EventListenerManager;
 import com.facebook.presto.execution.Column;
 import com.facebook.presto.execution.ExecutionFailureInfo;
@@ -52,12 +56,14 @@ import com.facebook.presto.spi.eventlistener.QueryInputMetadata;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryOutputMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
+import com.facebook.presto.spi.eventlistener.QueryUpdatedEvent;
 import com.facebook.presto.spi.eventlistener.ResourceDistribution;
 import com.facebook.presto.spi.eventlistener.StageStatistics;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
-import com.facebook.presto.transaction.TransactionId;
+import com.facebook.presto.spi.statistics.PlanStatisticsWithSourceInfo;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
 
 import javax.inject.Inject;
@@ -70,6 +76,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
+import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textDistributedPlan;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -93,6 +100,7 @@ public class QueryMonitor
     private final String environment;
     private final SessionPropertyManager sessionPropertyManager;
     private final FunctionAndTypeManager functionAndTypeManager;
+    private final HistoryBasedPlanStatisticsTracker historyBasedPlanStatisticsTracker;
     private final int maxJsonLimit;
 
     @Inject
@@ -105,7 +113,8 @@ public class QueryMonitor
             NodeVersion nodeVersion,
             SessionPropertyManager sessionPropertyManager,
             Metadata metadata,
-            QueryMonitorConfig config)
+            QueryMonitorConfig config,
+            HistoryBasedPlanStatisticsManager historyBasedPlanStatisticsManager)
     {
         this.eventListenerManager = requireNonNull(eventListenerManager, "eventListenerManager is null");
         this.stageInfoCodec = requireNonNull(stageInfoCodec, "stageInfoCodec is null");
@@ -116,6 +125,7 @@ public class QueryMonitor
         this.environment = requireNonNull(nodeInfo, "nodeInfo is null").getEnvironment();
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.functionAndTypeManager = requireNonNull(metadata, "metadata is null").getFunctionAndTypeManager();
+        this.historyBasedPlanStatisticsTracker = requireNonNull(historyBasedPlanStatisticsManager, "historyBasedPlanStatisticsManager is null").getHistoryBasedPlanStatisticsTracker();
         this.maxJsonLimit = toIntExact(requireNonNull(config, "config is null").getMaxOutputStageJsonSize().toBytes());
     }
 
@@ -129,13 +139,21 @@ public class QueryMonitor
                                 queryInfo.getQueryId().toString(),
                                 queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                                 queryInfo.getQuery(),
+                                queryInfo.getQueryHash(),
+                                queryInfo.getPreparedQuery(),
                                 QUEUED.toString(),
                                 queryInfo.getSelf(),
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
+                                Optional.empty(),
                                 ImmutableList.of(),
                                 queryInfo.getSession().getTraceToken())));
+    }
+
+    public void queryUpdatedEvent(QueryInfo queryInfo)
+    {
+        eventListenerManager.queryUpdated(new QueryUpdatedEvent(createQueryMetadata(queryInfo)));
     }
 
     public void queryImmediateFailureEvent(BasicQueryInfo queryInfo, ExecutionFailureInfo failure)
@@ -145,8 +163,11 @@ public class QueryMonitor
                         queryInfo.getQueryId().toString(),
                         queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                         queryInfo.getQuery(),
+                        queryInfo.getQueryHash(),
+                        queryInfo.getPreparedQuery(),
                         queryInfo.getState().toString(),
                         queryInfo.getSelf(),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
@@ -195,7 +216,13 @@ public class QueryMonitor
                 ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis()),
                 ImmutableList.of(),
                 ImmutableList.of(),
-                Optional.empty()));
+                ImmutableList.of(),
+                ImmutableList.of(),
+                Optional.empty(),
+                ImmutableList.of(),
+                ImmutableSet.of(),
+                ImmutableSet.of(),
+                ImmutableSet.of()));
 
         logQueryTimeline(queryInfo);
     }
@@ -225,9 +252,20 @@ public class QueryMonitor
                         ofEpochMilli(queryStats.getEndTime() != null ? queryStats.getEndTime().getMillis() : 0),
                         stageStatisticsBuilder.build(),
                         createOperatorStatistics(queryInfo),
-                        queryInfo.getExpandedQuery()));
+                        createPlanStatistics(queryInfo.getPlanStatsAndCosts()),
+                        historyBasedPlanStatisticsTracker.getQueryStats(queryInfo).values().stream().collect(toImmutableList()),
+                        queryInfo.getExpandedQuery(),
+                        queryInfo.getOptimizerInformation(),
+                        queryInfo.getScalarFunctions(),
+                        queryInfo.getAggregateFunctions(),
+                        queryInfo.getWindowsFunctions()));
 
         logQueryTimeline(queryInfo);
+    }
+
+    private List<PlanStatisticsWithSourceInfo> createPlanStatistics(StatsAndCosts planStatsAndCosts)
+    {
+        return planStatsAndCosts.getStats().entrySet().stream().map(entry -> entry.getValue().toPlanStatisticsWithSourceInfo(entry.getKey())).collect(toImmutableList());
     }
 
     private QueryMetadata createQueryMetadata(QueryInfo queryInfo)
@@ -236,10 +274,13 @@ public class QueryMonitor
                 queryInfo.getQueryId().toString(),
                 queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                 queryInfo.getQuery(),
+                queryInfo.getQueryHash(),
+                queryInfo.getPreparedQuery(),
                 queryInfo.getState().toString(),
                 queryInfo.getSelf(),
                 createTextQueryPlan(queryInfo),
                 createJsonQueryPlan(queryInfo),
+                createGraphvizQueryPlan(queryInfo),
                 queryInfo.getOutputStage().flatMap(stage -> stageInfoCodec.toJsonWithLengthLimit(stage, maxJsonLimit)),
                 queryInfo.getRuntimeOptimizedStages().orElse(ImmutableList.of()).stream()
                         .map(stageId -> String.valueOf(stageId.getId()))
@@ -298,7 +339,7 @@ public class QueryMonitor
         return new QueryStatistics(
                 ofMillis(queryStats.getTotalCpuTime().toMillis()),
                 ofMillis(queryStats.getRetriedCpuTime().toMillis()),
-                ofMillis(queryStats.getTotalScheduledTime().toMillis()),
+                ofMillis(queryStats.getElapsedTime().toMillis()),
                 ofMillis(queryStats.getWaitingForPrerequisitesTime().toMillis()),
                 ofMillis(queryStats.getQueuedTime().toMillis()),
                 ofMillis(queryStats.getResourceWaitingTime().toMillis()),
@@ -325,7 +366,7 @@ public class QueryMonitor
                 queryStats.getCumulativeUserMemory(),
                 queryStats.getCumulativeTotalMemory(),
                 queryStats.getCompletedDrivers(),
-                queryInfo.isCompleteInfo(),
+                queryInfo.isFinalQueryInfo(),
                 queryStats.getRuntimeStats());
     }
 
@@ -373,12 +414,30 @@ public class QueryMonitor
         try {
             if (queryInfo.getOutputStage().isPresent()) {
                 return Optional.of(jsonDistributedPlan(
-                        queryInfo.getOutputStage().get()));
+                        queryInfo.getOutputStage().get(),
+                        functionAndTypeManager));
             }
         }
         catch (Exception e) {
             // Don't fail to create event if the plan can not be created
             log.warn(e, "Error creating json plan for query %s: %s", queryInfo.getQueryId(), e);
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> createGraphvizQueryPlan(QueryInfo queryInfo)
+    {
+        try {
+            if (queryInfo.getOutputStage().isPresent()) {
+                return Optional.of(graphvizDistributedPlan(
+                        queryInfo.getOutputStage().get(),
+                        functionAndTypeManager,
+                        queryInfo.getSession().toSession(sessionPropertyManager)));
+            }
+        }
+        catch (Exception e) {
+            // Don't fail to create event if the graphviz plan can not be created
+            log.warn(e, "Error creating graphviz plan for query %s: %s", queryInfo.getQueryId(), e);
         }
         return Optional.empty();
     }
@@ -394,7 +453,8 @@ public class QueryMonitor
                     input.getColumns().stream()
                             .map(Column::getName).collect(Collectors.toList()),
                     input.getConnectorInfo(),
-                    input.getStatistics()));
+                    input.getStatistics(),
+                    input.getSerializedCommitOutput()));
         }
 
         Optional<QueryOutputMetadata> output = Optional.empty();
@@ -411,7 +471,8 @@ public class QueryMonitor
                             queryInfo.getOutput().get().getSchema(),
                             queryInfo.getOutput().get().getTable(),
                             tableFinishInfo.map(TableFinishInfo::getSerializedConnectorOutputMetadata),
-                            tableFinishInfo.map(TableFinishInfo::isJsonLengthLimitExceeded)));
+                            tableFinishInfo.map(TableFinishInfo::isJsonLengthLimitExceeded),
+                            queryInfo.getOutput().get().getSerializedCommitOutput()));
         }
         return new QueryIOMetadata(inputs.build(), output);
     }
