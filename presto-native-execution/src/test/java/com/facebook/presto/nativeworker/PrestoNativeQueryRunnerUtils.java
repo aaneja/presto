@@ -19,9 +19,11 @@ import com.facebook.presto.functionNamespace.json.JsonFileBasedFunctionNamespace
 import com.facebook.presto.hive.HiveQueryRunner;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.DistributedQueryRunner;
+import com.facebook.presto.tests.tpcds.TpcdsTableName;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Resources;
+import io.airlift.tpch.TpchTable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -30,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.nativeworker.NativeQueryRunnerUtils.getNativeWorkerHiveProperties;
 import static com.facebook.presto.nativeworker.NativeQueryRunnerUtils.getNativeWorkerSystemProperties;
@@ -147,8 +150,9 @@ public class PrestoNativeQueryRunnerUtils
     {
         // Make query runner with external workers for tests
         return HiveQueryRunner.createQueryRunner(
-                ImmutableList.of(),
-                ImmutableList.of(),
+                //Create the TPCH and TPCDS schemas that we expect in our regular Hive tests
+                TpchTable.getTables(),
+                TpcdsTableName.getBaseTables().stream().map(TpcdsTableName::getTableName).collect(Collectors.toList()),
                 ImmutableMap.<String, String>builder()
                         .put("http-server.http.port", "8080")
                         .put("experimental.internal-communication.thrift-transport-enabled", String.valueOf(useThrift))
