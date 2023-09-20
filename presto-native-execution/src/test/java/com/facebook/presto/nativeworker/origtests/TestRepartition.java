@@ -5,6 +5,8 @@ import com.facebook.presto.testing.ExpectedQueryRunner;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.AbstractTestRepartitionQueries;
 import com.facebook.presto.tests.AbstractTestTopNQueries;
+import com.facebook.presto.tests.H2QueryRunner;
+
 
 public class TestRepartition
         extends AbstractTestRepartitionQueries
@@ -18,7 +20,7 @@ public class TestRepartition
     @Override
     protected ExpectedQueryRunner createExpectedQueryRunner() throws Exception
     {
-        return PrestoNativeQueryRunnerUtils.createJavaQueryRunner();
+        return new H2QueryRunner();
     }
 
 }

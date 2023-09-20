@@ -4,6 +4,7 @@ import com.facebook.presto.nativeworker.PrestoNativeQueryRunnerUtils;
 import com.facebook.presto.testing.ExpectedQueryRunner;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.AbstractTestJoinQueries;
+import com.facebook.presto.tests.H2QueryRunner;
 
 public class TestJoins extends AbstractTestJoinQueries
 {
@@ -16,7 +17,7 @@ public class TestJoins extends AbstractTestJoinQueries
     @Override
     protected ExpectedQueryRunner createExpectedQueryRunner() throws Exception
     {
-        return PrestoNativeQueryRunnerUtils.createJavaQueryRunner();
+        return new H2QueryRunner();
     }
 
 }

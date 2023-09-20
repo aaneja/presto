@@ -5,6 +5,8 @@ import com.facebook.presto.testing.ExpectedQueryRunner;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.AbstractTestJoinQueries;
 import com.facebook.presto.tests.AbstractTestOrderByQueries;
+import com.facebook.presto.tests.H2QueryRunner;
+
 
 public class TestOrderBy
         extends AbstractTestOrderByQueries
@@ -18,7 +20,7 @@ public class TestOrderBy
     @Override
     protected ExpectedQueryRunner createExpectedQueryRunner() throws Exception
     {
-        return PrestoNativeQueryRunnerUtils.createJavaQueryRunner();
+        return new H2QueryRunner();
     }
 
 }
