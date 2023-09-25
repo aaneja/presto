@@ -247,7 +247,8 @@ public class TestFeaturesConfig
                 .setInferInequalityPredicates(false)
                 .setPullUpExpressionFromLambdaEnabled(false)
                 .setRewriteConstantArrayContainsToInEnabled(false)
-                .setUseHBOForScaledWriters(false));
+                .setUseHBOForScaledWriters(false)
+                .setHandleComplexEquiJoins(false));
     }
 
     @Test
@@ -443,6 +444,7 @@ public class TestFeaturesConfig
                 .put("optimizer.pull-up-expression-from-lambda", "true")
                 .put("optimizer.rewrite-constant-array-contains-to-in", "true")
                 .put("optimizer.use-hbo-for-scaled-writers", "true")
+                .put("optimizer.handle-complex-equi-joins", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -635,7 +637,8 @@ public class TestFeaturesConfig
                 .setInferInequalityPredicates(true)
                 .setPullUpExpressionFromLambdaEnabled(true)
                 .setRewriteConstantArrayContainsToInEnabled(true)
-                .setUseHBOForScaledWriters(true);
+                .setUseHBOForScaledWriters(true)
+                .setHandleComplexEquiJoins(true);
         assertFullMapping(properties, expected);
     }
 
