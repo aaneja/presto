@@ -19,6 +19,7 @@ import com.facebook.presto.common.block.SortOrder;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.operator.DriverYieldSignal;
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.operator.PagesIndexOrdering;
 import com.facebook.presto.operator.WorkProcessor;
 import com.facebook.presto.sql.gen.OrderingCompiler;
 import com.google.common.collect.ImmutableList;
@@ -82,6 +83,47 @@ public class PagesSortBenchmark
     }
 
     @Test
+    public void reproDeOptInQuickSort() {
+        PagesIndexSortBenchmarkData data = new PagesIndexSortBenchmarkData();
+        data.setup();
+
+        PagesIndex.TestingFactory pagesIndexFactory = new PagesIndex.TestingFactory(false);
+        for (int j = 0; j < 500; j++) {
+            PagesIndex pageIndex = pagesIndexFactory.newPagesIndex(data.getTypes(), data.getTotalPositions());
+            for (Page page : data.getPages()) {
+                pageIndex.addPage(page);
+            }
+
+            PagesIndexOrdering pagesIndexComparator = pageIndex.createPagesIndexComparator(data.getSortChannels(), data.getSortOrders());
+
+            for (int i = 0; i < 1_000_000; i++) {
+                pagesIndexComparator.sort(pageIndex, 0, 6);
+            }
+
+            for (int i = 0; i < 1_000_000; i++) {
+                pagesIndexComparator.sort(pageIndex, 6, 26);
+            }
+
+            for (int i = 0; i < 1_000_000; i++) {
+                pagesIndexComparator.sort(pageIndex, 27, 32);
+            }
+
+            for (int i = 0; i < 1_000_000; i++) {
+                pagesIndexComparator.sort(pageIndex, 32, 52);
+            }
+
+            for (int i = 0; i < 1_000_000; i++) {
+                pagesIndexComparator.sort(pageIndex, 52, 200);
+            }
+        }
+    }
+
+    private void sortTill(PagesIndex pageIndex, PagesIndexOrdering pagesIndexComparator, int index) {
+        pagesIndexComparator.sort(pageIndex, 0, index);
+
+    }
+
+    @Test
     public void verifyPagesIndexSortBenchmark()
     {
         PagesIndexSortBenchmarkData state = new PagesIndexSortBenchmarkData();
@@ -100,10 +142,10 @@ public class PagesSortBenchmark
             extends BaseBenchmarkData
     {
         @Param("1")
-        private int numSortChannels = 1;
+        private int numSortChannels = 20;
 
         @Param({"1", "8"})
-        private int totalChannels = 1;
+        private int totalChannels = 20;
 
         @Param({"200", "400"})
         private int pagesCount = 200;
