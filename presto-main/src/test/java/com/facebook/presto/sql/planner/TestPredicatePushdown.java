@@ -14,17 +14,27 @@
 package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.common.function.OperatorType;
+import com.facebook.presto.common.type.VarcharType;
+import com.facebook.presto.expressions.LogicalRowExpressions;
+import com.facebook.presto.metadata.FunctionAndTypeManager;
+import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.FilterNode;
+import com.facebook.presto.spi.relation.ConstantExpression;
+import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PredicatePushDown;
+import com.facebook.presto.sql.planner.optimizations.ReplaceConstantVariableReferencesWithConstants;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.JoinNode.EquiJoinClause;
 import com.facebook.presto.sql.planner.plan.WindowNode;
+import com.facebook.presto.sql.relational.FunctionResolution;
+import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.slice.Slices;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -32,6 +42,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
+import static com.facebook.presto.common.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.assignUniqueId;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJoinClause;
@@ -50,6 +62,7 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.DistributionType.REP
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.relational.Expressions.constant;
+import static java.util.Collections.emptyList;
 
 public class TestPredicatePushdown
         extends BasePlanTest
@@ -464,6 +477,52 @@ public class TestPredicatePushdown
                                 Optional.empty(),
                                 Optional.of(PARTITIONED),
                                 ImmutableMap.of()))
+                .matches(
+                        project(
+                                ImmutableMap.of("a1", expression("a1")),
+                                join(
+                                        INNER,
+                                        ImmutableList.of(),
+                                        Optional.empty(),
+                                        Optional.of(REPLICATED),
+                                        project(
+                                                filter("a1=1",
+                                                        values("a1"))),
+                                        project(
+                                                filter("1=b1",
+                                                        values("b1"))))));
+    }
+
+    @Test
+    public void testRepalceConstantFolding()
+    {
+        RuleTester tester = new RuleTester(emptyList(), ImmutableMap.of("rewrite_expression_with_constant_expression", "true"));
+        VarcharType varchar13 = VARCHAR;
+        FunctionAndTypeManager functionAndTypeManager = tester.getMetadata().getFunctionAndTypeManager();
+        LogicalRowExpressions logicalRowExpressions = new LogicalRowExpressions(
+                new RowExpressionDeterminismEvaluator(functionAndTypeManager),
+                new FunctionResolution(functionAndTypeManager.getFunctionAndTypeResolver()),
+                functionAndTypeManager);
+        tester.assertThat(new ReplaceConstantVariableReferencesWithConstants(functionAndTypeManager))
+                .on(p -> {
+                    ConstantExpression constant = new ConstantExpression(Optional.empty(), Slices.utf8Slice("some_constant"), varchar13);
+                    VariableReferenceExpression constantVar = p.variable("constant_var", varchar13);
+                    VariableReferenceExpression a1 = p.variable("a1");
+                    VariableReferenceExpression a2 = p.variable("a2");
+                    return p.project(Assignments.builder()
+                                    .put(constantVar, constant)
+                                    .build(),
+                                    p.join(INNER,
+                                            p.project(Assignments.builder()
+                                                            .put(a1, a1)
+                                                            .build(),
+                                                p.filter(logicalRowExpressions.equalsCallExpression(constantVar, constant),
+                                                        p.values(a1, constantVar))),
+                                            p.values(a2),
+                                            ImmutableList.of(new EquiJoinClause(a1,a2)),
+                                            ImmutableList.of(),
+                                            Optional.empty()));
+                })
                 .matches(
                         project(
                                 ImmutableMap.of("a1", expression("a1")),
