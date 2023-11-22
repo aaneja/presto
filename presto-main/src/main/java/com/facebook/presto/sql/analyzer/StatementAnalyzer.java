@@ -2060,12 +2060,7 @@ class StatementAnalyzer
 
             List<List<Type>> rowTypes = node.getRows().stream()
                     .map(row -> analyzeExpression(row, createScope(scope)).getType(row))
-                    .map(type -> {
-                        if (type instanceof RowType) {
-                            return type.getTypeParameters();
-                        }
-                        return ImmutableList.of(type);
-                    })
+                    .map(type -> ImmutableList.of(type))
                     .collect(toImmutableList());
 
             // determine common super type of the rows
@@ -2098,23 +2093,10 @@ class StatementAnalyzer
 
             // add coercions for the rows
             for (Expression row : node.getRows()) {
-                if (row instanceof Row) {
-                    List<Expression> items = ((Row) row).getItems();
-                    for (int i = 0; i < items.size(); i++) {
-                        Type expectedType = fieldTypes.get(i);
-                        Expression item = items.get(i);
-                        Type actualType = analysis.getType(item);
-                        if (!actualType.equals(expectedType)) {
-                            analysis.addCoercion(item, expectedType, functionAndTypeResolver.isTypeOnlyCoercion(actualType, expectedType));
-                        }
-                    }
-                }
-                else {
-                    Type actualType = analysis.getType(row);
-                    Type expectedType = fieldTypes.get(0);
-                    if (!actualType.equals(expectedType)) {
-                        analysis.addCoercion(row, expectedType, functionAndTypeResolver.isTypeOnlyCoercion(actualType, expectedType));
-                    }
+                Type actualType = analysis.getType(row);
+                Type expectedType = fieldTypes.get(0);
+                if (!actualType.equals(expectedType)) {
+                    analysis.addCoercion(row, expectedType, functionAndTypeResolver.isTypeOnlyCoercion(actualType, expectedType));
                 }
             }
 

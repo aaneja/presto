@@ -771,14 +771,7 @@ class RelationPlanner
         ImmutableList.Builder<List<RowExpression>> rowsBuilder = ImmutableList.builder();
         for (Expression row : node.getRows()) {
             ImmutableList.Builder<RowExpression> values = ImmutableList.builder();
-            if (row instanceof Row) {
-                for (Expression item : ((Row) row).getItems()) {
-                    values.add(rewriteRow(item, context));
-                }
-            }
-            else {
-                values.add(rewriteRow(row, context));
-            }
+            values.add(rewriteRow(row, context));
             rowsBuilder.add(values.build());
         }
 

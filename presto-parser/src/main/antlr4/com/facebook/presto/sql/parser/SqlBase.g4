@@ -236,7 +236,7 @@ queryTerm
 queryPrimary
     : querySpecification                   #queryPrimaryDefault
     | TABLE qualifiedName                  #table
-    | VALUES expression (',' expression)*  #inlineTable
+    | VALUES '(' expression (',' expression)* ')'  #inlineTable
     | '(' queryNoWith  ')'                 #subquery
     ;
 
