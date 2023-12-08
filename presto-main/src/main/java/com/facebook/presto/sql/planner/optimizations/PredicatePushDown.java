@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.optimizations;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.common.type.BooleanType;
 import com.facebook.presto.common.type.VarcharType;
@@ -125,11 +126,13 @@ public class PredicatePushDown
     private final Metadata metadata;
     private final EffectivePredicateExtractor effectivePredicateExtractor;
     private final SqlParser sqlParser;
+    private final RowExpressionDomainTranslator rowExpressionDomainTranslator;
 
     public PredicatePushDown(Metadata metadata, SqlParser sqlParser)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
-        this.effectivePredicateExtractor = new EffectivePredicateExtractor(new RowExpressionDomainTranslator(metadata), metadata.getFunctionAndTypeManager());
+        rowExpressionDomainTranslator = new RowExpressionDomainTranslator(metadata);
+        this.effectivePredicateExtractor = new EffectivePredicateExtractor(rowExpressionDomainTranslator, metadata.getFunctionAndTypeManager());
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
     }
 
@@ -141,7 +144,7 @@ public class PredicatePushDown
         requireNonNull(types, "types is null");
         requireNonNull(idAllocator, "idAllocator is null");
 
-        Rewriter rewriter = new Rewriter(variableAllocator, idAllocator, metadata, effectivePredicateExtractor, sqlParser, session);
+        Rewriter rewriter = new Rewriter(variableAllocator, idAllocator, metadata, effectivePredicateExtractor, rowExpressionDomainTranslator, sqlParser, session);
         PlanNode rewrittenPlan = SimplePlanRewriter.rewriteWith(rewriter, plan, TRUE_CONSTANT);
         return PlanOptimizerResult.optimizerResult(rewrittenPlan, rewriter.isPlanChanged());
     }
@@ -174,6 +177,7 @@ public class PredicatePushDown
         private final PlanNodeIdAllocator idAllocator;
         private final Metadata metadata;
         private final EffectivePredicateExtractor effectivePredicateExtractor;
+        private final RowExpressionDomainTranslator rowExpressionDomainTranslator;
         private final Session session;
         private final ExpressionEquivalence expressionEquivalence;
         private final RowExpressionDeterminismEvaluator determinismEvaluator;
@@ -187,13 +191,14 @@ public class PredicatePushDown
                 PlanNodeIdAllocator idAllocator,
                 Metadata metadata,
                 EffectivePredicateExtractor effectivePredicateExtractor,
-                SqlParser sqlParser,
+                RowExpressionDomainTranslator rowExpressionDomainTranslator, SqlParser sqlParser,
                 Session session)
         {
             this.variableAllocator = requireNonNull(variableAllocator, "variableAllocator is null");
             this.idAllocator = requireNonNull(idAllocator, "idAllocator is null");
             this.metadata = requireNonNull(metadata, "metadata is null");
             this.effectivePredicateExtractor = requireNonNull(effectivePredicateExtractor, "effectivePredicateExtractor is null");
+            this.rowExpressionDomainTranslator = rowExpressionDomainTranslator;
             this.session = requireNonNull(session, "session is null");
             this.expressionEquivalence = new ExpressionEquivalence(metadata, sqlParser);
             this.determinismEvaluator = new RowExpressionDeterminismEvaluator(metadata);
@@ -1047,6 +1052,25 @@ public class PredicatePushDown
                     postJoinConjuncts.add(conjunct);
                 }
             }
+
+            if (SystemSessionProperties.shouldGenerateDomainFilters(session)) {
+                // Extract domains for each of the variables from the inherited predicate
+                // See related comment on #processInnerJoin
+                rowExpressionDomainTranslator.fromPredicate(session.toConnectorSession(), inheritedPredicate)
+                        .getTupleDomain()
+                        .getDomains()
+                        .ifPresent(map -> map.forEach((variable, domain) -> {
+                            // For outer-side, inferred domains can be pushed down as-is
+                            if (outerVariables.contains(variable)) {
+                                outerPushdownConjuncts.add(rowExpressionDomainTranslator.toPredicate(domain, variable));
+                            }
+                            // For inner-side, only domains that don't include NULL can be pushed down
+                            else if (!domain.isNullAllowed()) {
+                                innerPushdownConjuncts.add(rowExpressionDomainTranslator.toPredicate(domain, variable));
+                            }
+                        }));
+            }
+
             // Add the equalities from the inferences back in
             outerPushdownConjuncts.addAll(equalityPartition.getScopeEqualities());
             postJoinConjuncts.addAll(equalityPartition.getScopeComplementEqualities());
@@ -1217,6 +1241,30 @@ public class PredicatePushDown
                 if (leftRewritten == null && rightRewritten == null) {
                     joinConjuncts.add(conjunct);
                 }
+            }
+
+            if (SystemSessionProperties.shouldGenerateDomainFilters(session)) {
+                // Extract domains for each of the variables from the inherited predicate
+                // and translate them back to predicates that can be added to the sources
+                // These prove to be helpful to extract predicates on columns that cannot be converted to CNF cleanly
+                // E.g. for (Left=4 AND Right=20) or (Left=5 AND Right=21) or (Left=6 AND Right=22)
+                // We would extract the TupleDomain = [ Left IN (4,5,6), Right IN (20,21,22)], then convert them into predicates on 'Left' & 'Right'
+
+                // Note that, we can end up adding duplicate conjuncts to outerPushdownConjuncts for some pre-added variables
+                // These are usually eliminated during later stages of predicate simplification. However, if some remain
+                // these redundant predicates do end up increasing plan node cost (with no impact to correctness)
+                // TODO : Move this filter addition as a cost-based rule if/when we implement a true CBO
+                rowExpressionDomainTranslator.fromPredicate(session.toConnectorSession(), inheritedPredicate)
+                        .getTupleDomain()
+                        .getDomains()
+                        .ifPresent(map -> map.forEach((variable, domain) -> {
+                            if (leftVariables.contains(variable)) {
+                                leftPushDownConjuncts.add(rowExpressionDomainTranslator.toPredicate(domain, variable));
+                            }
+                            else {
+                                rightPushDownConjuncts.add(rowExpressionDomainTranslator.toPredicate(domain, variable));
+                            }
+                        }));
             }
 
             // Add equalities from the inference back in

@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.facebook.presto.SystemSessionProperties.GENERATE_DOMAIN_FILTERS;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.assignUniqueId;
@@ -50,6 +51,7 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.DistributionType.REP
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.relational.Expressions.constant;
+import static java.util.Collections.emptyList;
 
 public class TestPredicatePushdown
         extends BasePlanTest
@@ -554,5 +556,86 @@ public class TestPredicatePushdown
                                                                 ImmutableMap.of(
                                                                         "N_NATIONKEY", "nationkey",
                                                                         "N_NAME", "name")))))));
+    }
+
+    @Test
+    public void testDomainFiltersCanBeInferredForLargeDisjunctiveFilters()
+    {
+        RuleTester tester = new RuleTester(emptyList(), ImmutableMap.of(GENERATE_DOMAIN_FILTERS, "true"));
+        PredicatePushDown predicatePushDownOptimizer = new PredicatePushDown(tester.getMetadata(), tester.getSqlParser());
+
+        // For Inner Join
+        tester.assertThat(predicatePushDownOptimizer)
+                // Query has more than 2 disjunctions in its predicate; SimplifyRowExpressions will not convert this into a CNF form
+                // Because of this, we do not get predicates on 's.phone' and 'l.orderkey' pushed down
+                // However when 'generate_domain_filters=true', these predicates are generated and pushed down
+                .on("select 1 FROM supplier s INNER JOIN lineitem l on s.suppkey = l.suppkey " +
+                        "WHERE (s.phone = '424242' AND l.orderkey = 5 ) " +
+                        "OR (s.phone = '242424' AND l.orderkey = 10) " +
+                        "OR (s.phone = '32424' AND l.orderkey = 150)")
+                .matches(
+                        anyTree(
+                                join(INNER,
+                                        ImmutableList.of(equiJoinClause("S_SUPPKEY", "L_SUPPKEY")),
+                                        Optional.of("(S_PHONE = '424242' AND L_ORDERKEY = 5) OR (S_PHONE = '242424' AND L_ORDERKEY = 10) OR (S_PHONE = '32424' AND L_ORDERKEY = 150)"),
+                                        project(
+                                                filter("S_PHONE IN ('242424','32424','424242')",
+                                                        tableScan("supplier",
+                                                                ImmutableMap.of(
+                                                                        "S_SUPPKEY", "suppkey",
+                                                                        "S_PHONE", "phone")))),
+                                        project(
+                                                filter("L_ORDERKEY IN (5,10,150)",
+                                                        tableScan("lineitem",
+                                                                ImmutableMap.of(
+                                                                        "L_SUPPKEY", "suppkey",
+                                                                        "L_ORDERKEY", "orderkey")))))));
+
+        // For an outer join, if an inner-side predicate is not pushing down an ISNULL; we can pushdown the full inner-side range predicate
+        tester.assertThat(predicatePushDownOptimizer)
+                .on("select 1 FROM supplier s LEFT JOIN lineitem l on s.suppkey = l.suppkey " +
+                        "WHERE (s.phone = '424242' AND l.orderkey = 5 ) " +
+                        "OR (s.phone = '242424' AND l.orderkey = 10) " +
+                        "OR (s.phone = '32424' AND l.orderkey = 150)")
+                .matches(
+                        anyTree(
+                                filter("(S_PHONE = '424242' AND L_ORDERKEY = 5) OR (S_PHONE = '242424' AND L_ORDERKEY = 10) OR (S_PHONE = '32424' AND L_ORDERKEY = 150)",
+                                        join(LEFT,
+                                                ImmutableList.of(equiJoinClause("S_SUPPKEY", "L_SUPPKEY")),
+                                                project(
+                                                        filter("S_PHONE IN ('242424','32424','424242')",
+                                                                tableScan("supplier",
+                                                                        ImmutableMap.of(
+                                                                                "S_SUPPKEY", "suppkey",
+                                                                                "S_PHONE", "phone")))),
+                                                project(
+                                                        filter("L_ORDERKEY IN (5,10,150)",
+                                                                tableScan("lineitem",
+                                                                        ImmutableMap.of(
+                                                                                "L_SUPPKEY", "suppkey",
+                                                                                "L_ORDERKEY", "orderkey"))))))));
+
+        // For an outer join, if an inner-side predicate *is* pushing down an ISNULL; we cannot push this predicate down
+        tester.assertThat(predicatePushDownOptimizer)
+                .on("select 1 FROM supplier s LEFT JOIN lineitem l on s.suppkey = l.suppkey " +
+                        "WHERE (s.phone = '424242' AND l.orderkey = 5 ) " +
+                        "OR (s.phone = '242424' AND l.orderkey = 10) " +
+                        "OR (s.phone = '32424' AND l.orderkey IS NULL)")
+                .matches(
+                        anyTree(
+                                filter("(S_PHONE = '424242' AND L_ORDERKEY = 5) OR (S_PHONE = '242424' AND L_ORDERKEY = 10) OR (S_PHONE = '32424' AND L_ORDERKEY IS NULL)",
+                                        join(LEFT,
+                                                ImmutableList.of(equiJoinClause("S_SUPPKEY", "L_SUPPKEY")),
+                                                project(
+                                                        filter("S_PHONE IN ('242424','32424','424242')",
+                                                                tableScan("supplier",
+                                                                        ImmutableMap.of(
+                                                                                "S_SUPPKEY", "suppkey",
+                                                                                "S_PHONE", "phone")))),
+                                                project(
+                                                        tableScan("lineitem",
+                                                                ImmutableMap.of(
+                                                                        "L_SUPPKEY", "suppkey",
+                                                                        "L_ORDERKEY", "orderkey")))))));
     }
 }
