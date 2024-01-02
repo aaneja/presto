@@ -147,6 +147,8 @@ public final class HiveSessionProperties
     private static final String READ_TABLE_CONSTRAINTS = "read_table_constraints";
     public static final String READ_MASKED_VALUE_ENABLED = "read_null_masked_parquet_encrypted_value_enabled";
     public static final String PARALLEL_PARSING_OF_PARTITION_VALUES_ENABLED = "parallel_parsing_of_partition_values_enabled";
+    public static final String QUICK_STATS_ENABLED = "quick_stats_enabled";
+
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -711,6 +713,11 @@ public final class HiveSessionProperties
                         PARALLEL_PARSING_OF_PARTITION_VALUES_ENABLED,
                         "Enables parallel parsing of partition values from partition names using thread pool",
                         hiveClientConfig.isParallelParsingOfPartitionValuesEnabled(),
+                        false),
+                booleanProperty(
+                        QUICK_STATS_ENABLED,
+                        "Use quick stats to resolve stats",
+                        hiveClientConfig.isQuickStatsEnabled(),
                         false));
     }
 
@@ -1245,5 +1252,10 @@ public final class HiveSessionProperties
     public static boolean isParallelParsingOfPartitionValuesEnabled(ConnectorSession session)
     {
         return session.getProperty(PARALLEL_PARSING_OF_PARTITION_VALUES_ENABLED, Boolean.class);
+    }
+
+    public static boolean isQuickStatsEnabled(ConnectorSession session)
+    {
+        return session.getProperty(QUICK_STATS_ENABLED, Boolean.class);
     }
 }

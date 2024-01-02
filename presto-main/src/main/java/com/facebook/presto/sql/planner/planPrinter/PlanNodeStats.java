@@ -15,6 +15,8 @@ package com.facebook.presto.sql.planner.planPrinter;
 
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.util.Mergeable;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 
@@ -50,6 +52,7 @@ public class PlanNodeStats
     private final long planNodeNullJoinProbeKeyCount;
     private final long planNodeJoinProbeKeyCount;
 
+    @JsonCreator
     PlanNodeStats(
             PlanNodeId planNodeId,
             Duration planNodeScheduledTime,
@@ -92,51 +95,61 @@ public class PlanNodeStats
         return sqrt(max(variance, 0d));
     }
 
+    @JsonProperty
     public PlanNodeId getPlanNodeId()
     {
         return planNodeId;
     }
 
+    @JsonProperty
     public Duration getPlanNodeScheduledTime()
     {
         return planNodeScheduledTime;
     }
 
+    @JsonProperty
     public Duration getPlanNodeCpuTime()
     {
         return planNodeCpuTime;
     }
 
+    @JsonProperty
     public Set<String> getOperatorTypes()
     {
         return operatorInputStats.keySet();
     }
 
+    @JsonProperty
     public long getPlanNodeInputPositions()
     {
         return planNodeInputPositions;
     }
 
+    @JsonProperty
     public DataSize getPlanNodeInputDataSize()
     {
         return planNodeInputDataSize;
     }
 
+    @JsonProperty
     public long getPlanNodeRawInputPositions()
     {
         return planNodeRawInputPositions;
     }
 
+    @JsonProperty
     public DataSize getPlanNodeRawInputDataSize()
     {
         return planNodeRawInputDataSize;
     }
 
+    @JsonProperty
     public long getPlanNodeOutputPositions()
     {
         return planNodeOutputPositions;
     }
 
+    @JsonProperty
     public DataSize getPlanNodeOutputDataSize()
     {
         return planNodeOutputDataSize;

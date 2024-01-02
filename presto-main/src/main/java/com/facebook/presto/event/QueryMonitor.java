@@ -66,6 +66,7 @@ import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.spi.statistics.PlanStatisticsWithSourceInfo;
 import com.facebook.presto.sql.planner.CanonicalPlanWithInfo;
+import com.facebook.presto.sql.planner.planPrinter.PlanNodeStats;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -82,6 +83,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
+import static com.facebook.presto.sql.planner.planPrinter.PlanNodeStatsSummarizer.aggregateStageStats;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textDistributedPlan;
@@ -97,6 +99,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 public class QueryMonitor
 {
+    public static final JsonCodec<Map<PlanNodeId, PlanNodeStats>> PLAN_NODE_RUNTIME_STATS_CODEC = JsonCodec.mapJsonCodec(PlanNodeId.class, PlanNodeStats.class);
     private static final Logger log = Logger.get(QueryMonitor.class);
 
     private final JsonCodec<StageInfo> stageInfoCodec;
@@ -156,7 +159,8 @@ public class QueryMonitor
                                 Optional.empty(),
                                 Optional.empty(),
                                 ImmutableList.of(),
-                                queryInfo.getSession().getTraceToken())));
+                                queryInfo.getSession().getTraceToken(),
+                                Optional.empty())));
     }
 
     public void queryUpdatedEvent(QueryInfo queryInfo)
@@ -180,7 +184,8 @@ public class QueryMonitor
                         Optional.empty(),
                         Optional.empty(),
                         ImmutableList.of(),
-                        queryInfo.getSession().getTraceToken()),
+                        queryInfo.getSession().getTraceToken(),
+                        Optional.empty()),
                 new QueryStatistics(
                         ofMillis(0),
                         ofMillis(0),
@@ -314,7 +319,15 @@ public class QueryMonitor
                 queryInfo.getRuntimeOptimizedStages().orElse(ImmutableList.of()).stream()
                         .map(stageId -> String.valueOf(stageId.getId()))
                         .collect(toImmutableList()),
-                queryInfo.getSession().getTraceToken());
+                queryInfo.getSession().getTraceToken(),
+                Optional.of(createPlanNodeRuntimeStats(queryInfo)));
+    }
+
+    private String createPlanNodeRuntimeStats(QueryInfo queryInfo)
+    {
+        List<StageInfo> allStages = getAllStages(queryInfo.getOutputStage());
+        Map<PlanNodeId, PlanNodeStats> aggregatedStats = aggregateStageStats(allStages);
+        return PLAN_NODE_RUNTIME_STATS_CODEC.toJson(aggregatedStats);
     }
 
     private List<OperatorStatistics> createOperatorStatistics(QueryInfo queryInfo)

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.testing;
 
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.common.function.SqlFunctionProperties;
 import com.facebook.presto.common.type.TimeZoneKey;
 import com.facebook.presto.execution.QueryIdGenerator;
@@ -61,6 +62,7 @@ public class TestingConnectorSession
     private final SqlFunctionProperties sqlFunctionProperties;
     private final Optional<String> schema;
     private final Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions;
+    private final RuntimeStats runtimeStats = new RuntimeStats();
 
     public TestingConnectorSession(List<PropertyMetadata<?>> properties)
     {
@@ -204,6 +206,12 @@ public class TestingConnectorSession
     public WarningCollector getWarningCollector()
     {
         return WarningCollector.NOOP;
+    }
+
+    @Override
+    public RuntimeStats getRuntimeStats()
+    {
+        return runtimeStats;
     }
 
     @Override

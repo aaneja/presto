@@ -26,6 +26,7 @@ import com.facebook.presto.hive.metastore.PartitionWithStatistics;
 import com.facebook.presto.hive.metastore.PrincipalPrivileges;
 import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.hive.metastore.UnimplementedHiveMetastore;
+import com.facebook.presto.hive.statistics.QuickStatsProvider;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableMetadata;
@@ -73,7 +74,9 @@ import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPER
 import static com.facebook.presto.hive.HiveTestUtils.FILTER_STATS_CALCULATOR_SERVICE;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_AND_TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_RESOLUTION;
+import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.ROW_EXPRESSION_SERVICE;
+import static com.facebook.presto.hive.HiveTestUtils.doNothingDirectoryLister;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.PRESTO_QUERY_ID_NAME;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.toPartitionValues;
 import static com.facebook.presto.hive.metastore.StorageFormat.fromHiveStorageFormat;
@@ -262,7 +265,8 @@ public class TestHiveCommitHandleOutput
                 new HiveEncryptionInformationProvider(ImmutableList.of()),
                 new HivePartitionStats(),
                 new HiveFileRenamer(),
-                HiveColumnConverterProvider.DEFAULT_COLUMN_CONVERTER_PROVIDER);
+                HiveColumnConverterProvider.DEFAULT_COLUMN_CONVERTER_PROVIDER,
+                new QuickStatsProvider(HDFS_ENVIRONMENT, doNothingDirectoryLister, new HiveClientConfig(), new NamenodeStats(), ImmutableList.of()));
         return hiveMetadataFactory.get();
     }
 

@@ -59,6 +59,7 @@ import com.facebook.presto.hive.metastore.thrift.ThriftHiveMetastore;
 import com.facebook.presto.hive.s3.HiveS3Config;
 import com.facebook.presto.hive.s3.PrestoS3ConfigurationUpdater;
 import com.facebook.presto.hive.s3.S3ConfigurationUpdater;
+import com.facebook.presto.hive.statistics.QuickStatsProvider;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
@@ -81,6 +82,7 @@ import static com.facebook.presto.hive.HiveTestUtils.FILTER_STATS_CALCULATOR_SER
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_AND_TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_RESOLUTION;
 import static com.facebook.presto.hive.HiveTestUtils.ROW_EXPRESSION_SERVICE;
+import static com.facebook.presto.hive.HiveTestUtils.doNothingDirectoryLister;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveBatchPageSourceFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveSelectivePageSourceFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultS3HiveRecordCursorProvider;
@@ -171,7 +173,8 @@ public class S3SelectTestHelper
                 new HiveEncryptionInformationProvider(ImmutableSet.of()),
                 new HivePartitionStats(),
                 new HiveFileRenamer(),
-                columnConverterProvider);
+                columnConverterProvider,
+                new QuickStatsProvider(hdfsEnvironment, doNothingDirectoryLister, new HiveClientConfig(), new NamenodeStats(), ImmutableList.of()));
         transactionManager = new HiveTransactionManager();
         splitManager = new HiveSplitManager(
                 transactionManager,

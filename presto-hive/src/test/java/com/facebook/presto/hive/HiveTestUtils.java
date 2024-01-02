@@ -89,6 +89,8 @@ import static java.util.stream.Collectors.toList;
 
 public final class HiveTestUtils
 {
+    public static final DirectoryLister doNothingDirectoryLister = (fileSystem, table, path, partition, namenodeStats, hiveDirectoryContext) -> null;
+
     private HiveTestUtils()
     {
     }

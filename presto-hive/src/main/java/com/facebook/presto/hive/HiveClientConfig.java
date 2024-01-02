@@ -227,6 +227,11 @@ public class HiveClientConfig
 
     private boolean parallelParsingOfPartitionValuesEnabled;
     private int maxParallelParsingConcurrency = 100;
+    private boolean quickStatsEnabled;
+    private Duration quickStatsBuildTimeout = new Duration(60, TimeUnit.SECONDS);
+    private Duration quickStatsCacheExpiry = new Duration(24, TimeUnit.HOURS);
+    private Duration quickStatsInProgressReaperExpiry = new Duration(5, TimeUnit.MINUTES);
+    private Duration parquetQuickStatsFooterFetchTimeout = new Duration(45, TimeUnit.SECONDS);
 
     @Min(0)
     public int getMaxInitialSplits()
@@ -1822,6 +1827,67 @@ public class HiveClientConfig
     public boolean isHudiMetadataEnabled()
     {
         return this.hudiMetadataEnabled;
+    }
+
+    @Config("hive.quick-stats.enabled")
+    @ConfigDescription("Use quick stats to resolve stats")
+    public HiveClientConfig setQuickStatsEnabled(boolean quickStatsEnabled)
+    {
+        this.quickStatsEnabled = quickStatsEnabled;
+        return this;
+    }
+
+    public boolean isQuickStatsEnabled()
+    {
+        return this.quickStatsEnabled;
+    }
+
+    @Config("hive.quick-stats.build-timeout")
+    public HiveClientConfig setQuickStatsBuildTimeout(Duration buildTimeout)
+    {
+        this.quickStatsBuildTimeout = buildTimeout;
+        return this;
+    }
+
+    public Duration getQuickStatsBuildTimeout()
+    {
+        return this.quickStatsBuildTimeout;
+    }
+
+    @Config("hive.quick-stats.cache-expiry")
+    public HiveClientConfig setQuickStatsCacheExpiry(Duration cacheExpiry)
+    {
+        this.quickStatsCacheExpiry = cacheExpiry;
+        return this;
+    }
+
+    public Duration getQuickStatsCacheExpiry()
+    {
+        return this.quickStatsCacheExpiry;
+    }
+
+    @Config("hive.quick-stats.reaper-expiry")
+    public HiveClientConfig setQuickStatsReaperExpiry(Duration reaperExpiry)
+    {
+        this.quickStatsInProgressReaperExpiry = reaperExpiry;
+        return this;
+    }
+
+    public Duration getQuickStatsReaperExpiry()
+    {
+        return this.quickStatsInProgressReaperExpiry;
+    }
+
+    @Config("hive.quick-stats.parquet.footer-fetch-timeout")
+    public HiveClientConfig setParquetQuickStatsFooterFetchTimeout(Duration footerFetchTimeout)
+    {
+        this.parquetQuickStatsFooterFetchTimeout = footerFetchTimeout;
+        return this;
+    }
+
+    public Duration getParquetQuickStatsFooterFetchTimeout()
+    {
+        return this.parquetQuickStatsFooterFetchTimeout;
     }
 
     public Protocol getThriftProtocol()

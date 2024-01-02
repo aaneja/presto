@@ -18,6 +18,7 @@ import com.facebook.airlift.stats.CounterStat;
 import com.facebook.presto.GroupByHashPageIndexerFactory;
 import com.facebook.presto.cache.CacheConfig;
 import com.facebook.presto.common.Page;
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.common.Subfield;
 import com.facebook.presto.common.block.Block;
 import com.facebook.presto.common.function.SqlFunctionProperties;
@@ -70,6 +71,7 @@ import com.facebook.presto.hive.rcfile.RcFilePageSource;
 import com.facebook.presto.hive.rule.BaseSubfieldExtractionRewriter.ConnectorPushdownFilterResult;
 import com.facebook.presto.hive.rule.HiveFilterPushdown;
 import com.facebook.presto.hive.rule.HiveFilterPushdown.SubfieldExtractionRewriter;
+import com.facebook.presto.hive.statistics.QuickStatsProvider;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
@@ -248,11 +250,13 @@ import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPER
 import static com.facebook.presto.hive.HiveTestUtils.FILTER_STATS_CALCULATOR_SERVICE;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_AND_TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_RESOLUTION;
+import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.METADATA;
 import static com.facebook.presto.hive.HiveTestUtils.PAGE_SORTER;
 import static com.facebook.presto.hive.HiveTestUtils.ROW_EXPRESSION_SERVICE;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.hive.HiveTestUtils.arrayType;
+import static com.facebook.presto.hive.HiveTestUtils.doNothingDirectoryLister;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveBatchPageSourceFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveFileWriterFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveRecordCursorProvider;
@@ -1032,7 +1036,9 @@ public abstract class AbstractTestHiveClient
                 new HiveEncryptionInformationProvider(ImmutableList.of()),
                 new HivePartitionStats(),
                 new HiveFileRenamer(),
-                DEFAULT_COLUMN_CONVERTER_PROVIDER);
+                DEFAULT_COLUMN_CONVERTER_PROVIDER,
+                new QuickStatsProvider(HDFS_ENVIRONMENT, doNothingDirectoryLister, new HiveClientConfig(), new NamenodeStats(), ImmutableList.of()));
+
         transactionManager = new HiveTransactionManager();
         encryptionInformationProvider = new HiveEncryptionInformationProvider(ImmutableList.of());
         splitManager = new HiveSplitManager(
@@ -1197,6 +1203,12 @@ public abstract class AbstractTestHiveClient
             public WarningCollector getWarningCollector()
             {
                 return WarningCollector.NOOP;
+            }
+
+            @Override
+            public RuntimeStats getRuntimeStats()
+            {
+                return session.getRuntimeStats();
             }
         };
     }

@@ -33,6 +33,7 @@ import com.facebook.presto.hive.metastore.thrift.BridgingHiveMetastore;
 import com.facebook.presto.hive.metastore.thrift.HiveCluster;
 import com.facebook.presto.hive.metastore.thrift.TestingHiveCluster;
 import com.facebook.presto.hive.metastore.thrift.ThriftHiveMetastore;
+import com.facebook.presto.hive.statistics.QuickStatsProvider;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
@@ -98,8 +99,10 @@ import static com.facebook.presto.hive.HiveQueryRunner.METASTORE_CONTEXT;
 import static com.facebook.presto.hive.HiveTestUtils.FILTER_STATS_CALCULATOR_SERVICE;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_AND_TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveTestUtils.FUNCTION_RESOLUTION;
+import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.PAGE_SORTER;
 import static com.facebook.presto.hive.HiveTestUtils.ROW_EXPRESSION_SERVICE;
+import static com.facebook.presto.hive.HiveTestUtils.doNothingDirectoryLister;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveBatchPageSourceFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveFileWriterFactories;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveRecordCursorProvider;
@@ -217,7 +220,9 @@ public abstract class AbstractTestHiveFileSystem
                 new HiveEncryptionInformationProvider(ImmutableList.of()),
                 new HivePartitionStats(),
                 new HiveFileRenamer(),
-                columnConverterProvider);
+                columnConverterProvider,
+                new QuickStatsProvider(HDFS_ENVIRONMENT, doNothingDirectoryLister, new HiveClientConfig(), new NamenodeStats(), ImmutableList.of()));
+
         transactionManager = new HiveTransactionManager();
         splitManager = new HiveSplitManager(
                 transactionManager,
