@@ -23,6 +23,7 @@ import com.facebook.presto.hive.HiveColumnConverterProvider;
 import com.facebook.presto.hive.HiveHdfsConfiguration;
 import com.facebook.presto.hive.MetastoreClientConfig;
 import com.facebook.presto.hive.NamenodeStats;
+import com.facebook.presto.hive.PartitionNameWithVersion;
 import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
 import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
 import com.facebook.presto.hive.metastore.HivePartitionMutator;
@@ -40,6 +41,7 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.testing.TestingConnectorSession;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -72,6 +74,7 @@ import static com.facebook.presto.hive.metastore.PrestoTableType.MANAGED_TABLE;
 import static com.facebook.presto.hive.metastore.StorageFormat.fromHiveStorageFormat;
 import static com.facebook.presto.hive.statistics.PartitionQuickStats.convertToPartitionStatistics;
 import static com.facebook.presto.spi.session.PropertyMetadata.booleanProperty;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static java.util.Collections.emptyIterator;
 import static java.util.concurrent.CompletableFuture.allOf;
@@ -278,7 +281,7 @@ public class TestQuickStatsProvider
                     assertEquals(partitionStatistics1, expectedPartitionStats);
                 }
                 else {
-                    fail(String.format("For [%s] partitionExpected one of the partitions stats to be empty. Actual partitionStatistics1 [%s], partitionStatistics2 [%s]",
+                    fail(String.format("For [%s] one of the partitions stats was expected to be empty. Actual partitionStatistics1 [%s], partitionStatistics2 [%s]",
                             testPartition, partitionStatistics1, partitionStatistics2));
                 }
             }
@@ -427,6 +430,13 @@ public class TestQuickStatsProvider
         public synchronized Optional<Partition> getPartition(MetastoreContext metastoreContext, String databaseName, String tableName, List<String> partitionValues)
         {
             return Optional.of(mockPartition);
+        }
+
+        @Override
+        public synchronized Map<String, Optional<Partition>> getPartitionsByNames(MetastoreContext metastoreContext, String databaseName, String tableName, List<PartitionNameWithVersion> partitionNames)
+        {
+            checkArgument(partitionNames.size() == 1, "Expected caller to only pass in a single partition to fetch");
+            return ImmutableMap.of(partitionNames.get(0).getPartitionName(), Optional.of(mockPartition));
         }
 
         @Override
