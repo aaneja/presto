@@ -41,7 +41,6 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.testing.TestingConnectorSession;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -83,7 +82,6 @@ import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.ForkJoinPool.commonPool;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.testcontainers.shaded.com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -134,6 +132,19 @@ public class TestQuickStatsProvider
         return new TestingConnectorSession(quickStatsProperties, ImmutableMap.of(
                 QUICK_STATS_INLINE_BUILD_TIMEOUT, inlineBuildTimeout,
                 QUICK_STATS_BACKGROUND_BUILD_TIMEOUT, backgroundBuildTimeout));
+    }
+
+    private static void spinWait(long delayInMilliseconds)
+    {
+        long delayInNanoseconds = delayInMilliseconds * 1000000;
+        long startTime = System.nanoTime();
+        while (true) {
+            long now = System.nanoTime();
+            long timeSpentSoFar = now - startTime;
+            if (timeSpentSoFar >= delayInNanoseconds) {
+                break;
+            }
+        }
     }
 
     @BeforeTest
@@ -231,13 +242,13 @@ public class TestQuickStatsProvider
         quickStats.values().forEach(ps -> assertEquals(ps, expectedPartitionStats));
     }
 
-    @Test(invocationCount = 3)
+    @Test(invocationCount = 50)
     public void testConcurrentFetchForSamePartition()
             throws ExecutionException, InterruptedException
     {
         QuickStatsBuilder longRunningQuickStatsBuilderMock = (session, metastore, table, metastoreContext, partitionId, files) -> {
-            // Sleep for 50ms to simulate a long-running quick stats call
-            sleepUninterruptibly(50, MILLISECONDS);
+            // Spin wait for 50ms to simulate a long-running quick stats call
+            spinWait(50);
             return mockPartitionQuickStats;
         };
 
@@ -320,13 +331,13 @@ public class TestQuickStatsProvider
         }
     }
 
-    @Test
+    @Test(invocationCount = 50)
     public void quickStatsBuildTimeIsBounded()
             throws Exception
     {
         ImmutableMap<String, Long> mockPerPartitionStatsFetchTimes = ImmutableMap.of("p1", 10L, "p2", 20L, "p3", 1500L, "p4", 1800L);
         QuickStatsBuilder longRunningQuickStatsBuilderMock = (session, metastore, table, metastoreContext, partitionId, files) -> {
-            sleepUninterruptibly(mockPerPartitionStatsFetchTimes.get(partitionId), MILLISECONDS);
+            spinWait(mockPerPartitionStatsFetchTimes.get(partitionId));
             return mockPartitionQuickStats;
         };
 
@@ -371,7 +382,7 @@ public class TestQuickStatsProvider
             // Stats may not appear immediately, so we retry with exponential delay
             retry()
                     .maxAttempts(10)
-                    .exponentialBackoff(new Duration(20D, MILLISECONDS), new Duration(500D, MILLISECONDS), new Duration(2, SECONDS), 2.0)
+                    .exponentialBackoff(new Duration(20D, MILLISECONDS), new Duration(500D, MILLISECONDS), new Duration(2D, SECONDS), 2D)
                     .run("waitForQuickStatsBuild", () -> {
                         Map<String, PartitionStatistics> quickStatsAfter = quickStatsProvider.getQuickStats(session, metastoreMock,
                                 new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, ImmutableList.of("p5", "p6"));
