@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
@@ -44,7 +45,7 @@ class JoinConstraintNode
     ArrayList<Long> idSet;
     ArrayList<Long> baseIdSet;
     PlanNode sourceNode;
-    JoinNode.DistributionType joinDistType;
+    JoinDistributionType joinDistType;
     boolean isRoot;
     String name;
     ArrayList<String> partitioning;
@@ -190,12 +191,12 @@ class JoinConstraintNode
         return constraintType;
     }
 
-    public JoinNode.DistributionType getDistributionType()
+    public JoinDistributionType getDistributionType()
     {
         return joinDistType;
     }
 
-    public void setDistributionType(JoinNode.DistributionType joinDistTypeParam)
+    public void setDistributionType(JoinDistributionType joinDistTypeParam)
     {
         joinDistType = joinDistTypeParam;
     }
@@ -248,10 +249,10 @@ class JoinConstraintNode
 
         if (!(ignoreDistribution.length == 0 || !ignoreDistribution[0]) && semiJoinNode.getDistributionType().isPresent()) {
             if (semiJoinNode.getDistributionType().get() == SemiJoinNode.DistributionType.PARTITIONED) {
-                setDistributionType(JoinNode.DistributionType.PARTITIONED);
+                setDistributionType(JoinDistributionType.PARTITIONED);
             }
             else {
-                setDistributionType(JoinNode.DistributionType.REPLICATED);
+                setDistributionType(JoinDistributionType.REPLICATED);
             }
         }
         else {
@@ -397,7 +398,7 @@ class JoinConstraintNode
         boolean satisfiesAny = false;
         if (joinConstraints != null && !joinConstraints.isEmpty()) {
             for (JoinConstraintNode constraint : joinConstraints) {
-                JoinNode.DistributionType saveJoinDistType = constraint.getDistributionType();
+                JoinDistributionType saveJoinDistType = constraint.getDistributionType();
                 if (ignoreDistributionType.length > 0 && ignoreDistributionType[0]) {
                     constraint.setDistributionType(null);
                 }
@@ -438,7 +439,7 @@ class JoinConstraintNode
     }
 
     private JoinConstraintNode find(Long joinId, String tableOrAliasName, ArrayList<JoinConstraintNode> childMappings,
-            JoinNode.DistributionType distType)
+            JoinDistributionType distType)
     {
         JoinConstraintNode foundJoinConstraintNode = null;
         requireNonNull(childMappings, "child mappings is null");
@@ -886,16 +887,16 @@ class JoinConstraintNode
 
                 scanner.nextToken();
 
-                JoinNode.DistributionType distType = null;
+                JoinDistributionType distType = null;
                 ArrayList<JoinConstraintNode> partitioning = null;
                 if (scanner.getToken() == Token.LBRACKET) {
                     scanner.nextToken();
 
                     if (scanner.getToken() == Token.PARTITIONED) {
-                        distType = JoinNode.DistributionType.PARTITIONED;
+                        distType = JoinDistributionType.PARTITIONED;
                     }
                     else {
-                        distType = JoinNode.DistributionType.REPLICATED;
+                        distType = JoinDistributionType.REPLICATED;
                     }
 
                     scanner.nextToken();

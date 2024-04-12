@@ -24,7 +24,9 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.Assignments;
+import com.facebook.presto.spi.plan.EquiJoinClause;
 import com.facebook.presto.spi.plan.FilterNode;
+import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.Ordering;
 import com.facebook.presto.spi.plan.OrderingScheme;
 import com.facebook.presto.spi.plan.PlanNode;
@@ -210,6 +212,386 @@ public class OptTrace
         }
         else {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Optimizer trace directory does not exist : %s", dirPath));
+        }
+    }
+
+    public static void begin(Optional<OptTrace> optTraceParam, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.begin(msgString, args));
+    }
+
+    public static void clearCaches(Optional<OptTrace> optTraceParam)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.clearCaches());
+    }
+
+    public static void setAnalysis(Optional<OptTrace> optTraceParam, Analysis analysis)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.setAnalysis(analysis));
+    }
+
+    public static void checkForDuplicateTableName(Optional<OptTrace> optTraceParam, String tableOrAliasName, String nodeLocation, boolean isAlias)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.checkForDuplicateTableName(tableOrAliasName, nodeLocation, isAlias));
+    }
+
+    public static void addPrunedJoinId(Optional<OptTrace> optTraceParam, Integer joinId, PruneReason reason)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.addPrunedJoinId(joinId, reason));
+    }
+
+    public static void addPlanNodeToPreferredPropertiesMapping(Optional<OptTrace> optTraceParam, PlanNode planNode, PreferredProperties preferredProperties)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.addPlanNodeToPreferredPropertiesMapping(planNode, preferredProperties));
+    }
+
+    public static void tracePlanNodeStatsEstimate(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
+    {
+        if (optTraceParam.isPresent()) {
+            optTraceParam.get().tracePlanNodeStatsEstimate(planNode, indentCnt, msgString, args);
+        }
+    }
+
+    public static void traceMemo(Optional<OptTrace> optTraceParam)
+    {
+        if (optTraceParam.isPresent()) {
+            optTraceParam.get().traceMemo();
+        }
+    }
+
+    public static void traceVariableReferenceExpressionList(Optional<OptTrace> optTraceParam, List<VariableReferenceExpression> varList, int indentCnt,
+            String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.traceVariableReferenceExpressionList(varList, indentCnt, msgString, args));
+    }
+
+    public static void tracePreferredProperties(Optional<OptTrace> optTraceParam, PreferredProperties preferredProperties, PlanNode planNode, int indentCnt,
+            String msgString, Object... args)
+    {
+        if (preferredProperties != null) {
+            optTraceParam.ifPresent(optTrace -> optTrace.tracePreferredProperties(preferredProperties, indentCnt, msgString, args));
+        }
+    }
+
+    public static PruneReason isPruned(Optional<OptTrace> optTraceParam, Integer traceId)
+    {
+        PruneReason pruned;
+        if (optTraceParam.isPresent()) {
+            OptTrace optTrace = optTraceParam.get();
+            pruned = optTrace.isPruned(traceId);
+        }
+        else {
+            pruned = null;
+        }
+
+        return pruned;
+    }
+
+    public static void queryInfo(Optional<OptTrace> optTraceParam)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.queryInfo());
+    }
+
+    public static void addEnumeratedJoin(Optional<OptTrace> optTraceParam, PlanNode planNode)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.addEnumeratedJoin(planNode));
+    }
+
+    public static void traceJoinIdMap(Optional<OptTrace> optTraceParam, int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinIdMap(indentCnt, msgString, args));
+    }
+
+    public static void trace(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanNode(planNode, indentCnt, msgString, args));
+    }
+
+    public static void trace(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, int maxDepth, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanNode(planNode, indentCnt, msgString, maxDepth, args));
+    }
+
+    public static void traceEnumeratedJoins(Optional<OptTrace> optTraceParam, PlanNode root, CostProvider costProvider, StatsProvider statsProvider,
+            int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.traceEnumeratedJoins(root, costProvider, statsProvider, indentCnt, msgString, args));
+    }
+
+    public static void traceJoinConstraint(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinConstraint(planNode, indentCnt, msgString, args));
+    }
+
+    public static void trace(Optional<OptTrace> optTraceParam, PlanCostEstimate planCostEstimate, int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanCostEstimate(planCostEstimate, indentCnt, msgString, args));
+    }
+
+    public static void msg(Optional<OptTrace> optTraceParam, String msgString, boolean eol, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.msg(msgString, eol, args));
+    }
+
+    public static void end(Optional<OptTrace> optTraceParam, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.end(msgString, args));
+    }
+
+    public static void incrIndent(Optional<OptTrace> optTraceParam, int indentCnt)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.incrIndent(indentCnt));
+    }
+
+    public static void decrIndent(Optional<OptTrace> optTraceParam, int indentCnt)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.decrIndent(indentCnt));
+    }
+
+    public static void trace(Optional<OptTrace> optTraceParam, Set<Integer> partition, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.tracePartition(partition, msgString, args));
+    }
+
+    public static void trace(Optional<OptTrace> optTraceParam, Set<PlanNode> sources, int indentCnt, String msgString, Object... args)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinSources(sources, indentCnt, msgString, args));
+    }
+
+    private static PlanNode findRootJoin(PlanNode planNode, Lookup lookUp)
+    {
+        requireNonNull(planNode, "plan node is null");
+
+        PlanNode rootJoinNode = null;
+        if (planNode instanceof JoinNode || planNode instanceof SemiJoinNode) {
+            rootJoinNode = planNode;
+        }
+        else if (planNode instanceof GroupReference) {
+            GroupReference groupReference = (GroupReference) planNode;
+            Stream<PlanNode> planNodes = lookUp.resolveGroup(groupReference);
+            Optional<PlanNode> groupPlanNode = planNodes.findFirst();
+            if (groupPlanNode.isPresent()) {
+                PlanNode tmpNode = groupPlanNode.get();
+                rootJoinNode = findRootJoin(tmpNode, lookUp);
+            }
+        }
+        else {
+            for (PlanNode source : planNode.getSources()) {
+                PlanNode sourceRootJoinNode = findRootJoin(source, lookUp);
+                if (sourceRootJoinNode != null) {
+                    if (rootJoinNode != null) {
+                        rootJoinNode = null;
+                        break;
+                    }
+                    else {
+                        rootJoinNode = sourceRootJoinNode;
+                    }
+                }
+            }
+        }
+
+        return rootJoinNode;
+    }
+
+    public static JoinConstraintNode joinConstraintNode(Optional<OptTrace> optTraceParam, JoinNode joinNode, boolean ignoreDistributionType)
+    {
+        JoinConstraintNode joinConstraintNode = null;
+        if (optTraceParam.isPresent()) {
+            joinConstraintNode = optTraceParam.get().joinConstraintNode(joinNode, null, ignoreDistributionType);
+        }
+
+        return joinConstraintNode;
+    }
+
+    public static void addSubPlans(Optional<OptTrace> optTraceParam, List<SubPlan> subPlansParam)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.addSubPlans(subPlansParam));
+    }
+
+    public static JoinConstraintNode joinConstraintNode(Optional<OptTrace> optTraceParam, SemiJoinNode semiJoinNode, boolean ignoreDistributionType)
+    {
+        JoinConstraintNode joinConstraintNode = null;
+        if (optTraceParam.isPresent()) {
+            joinConstraintNode = optTraceParam.get().joinConstraintNode(semiJoinNode, null, ignoreDistributionType);
+        }
+
+        return joinConstraintNode;
+    }
+
+    public static void assignTraceIds(Optional<OptTrace> optTraceParam, PlanNode node, Analysis analysis)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.assignTraceIds(node, analysis));
+    }
+
+    public static void addJoinConstraintNode(Optional<OptTrace> optTraceParam, PlanNode node)
+    {
+        optTraceParam.ifPresent(optTrace -> optTrace.addJoinConstraintNode(node));
+    }
+
+    public static boolean constraintsPresent(Optional<OptTrace> optTraceParam)
+    {
+        boolean constraintsPresent = false;
+        if (optTraceParam.isPresent()) {
+            constraintsPresent = (optTraceParam.get().planConstraints != null && optTraceParam.get().planConstraints.size() > 0);
+        }
+
+        return constraintsPresent;
+    }
+
+    public static boolean joinConstraintsPresent(Optional<OptTrace> optTraceParam)
+    {
+        boolean joinConstraintsPresent = false;
+        if (optTraceParam.isPresent()) {
+            if (optTraceParam.get().planConstraints != null && optTraceParam.get().planConstraints.size() > 0) {
+                for (JoinConstraintNode constraint : optTraceParam.get().planConstraints) {
+                    if (constraint.constraintType() != null && constraint.constraintType() == JoinConstraintNode.ConstraintType.JOIN) {
+                        joinConstraintsPresent = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return joinConstraintsPresent;
+    }
+
+    public static boolean satisfiesAnyJoinConstraint(Optional<OptTrace> optTraceParam, PlanNode planNode, boolean... ignoreDistributionType)
+    {
+        boolean satifiesAny = false;
+        if (optTraceParam.isPresent()) {
+            satifiesAny = optTraceParam.get().satisfiesAnyJoinConstraint(planNode, ignoreDistributionType);
+        }
+
+        return satifiesAny;
+    }
+
+    public static PlanNodeStatsEstimate stats(Optional<OptTrace> optTraceParam, PlanNode planNode, PlanNodeStatsEstimate stats)
+    {
+        PlanNodeStatsEstimate newStats = null;
+
+        if (optTraceParam.isPresent()) {
+            newStats = optTraceParam.get().planNodeStats(planNode, stats);
+        }
+
+        return newStats;
+    }
+
+    public static boolean valid(Optional<OptTrace> optTraceParam, PlanNode planNode)
+    {
+        boolean valid;
+
+        if (optTraceParam.isPresent()) {
+            OptTrace optTrace = optTraceParam.get();
+
+            Integer joinId = optTrace.getJoinId(planNode);
+
+            PruneReason reason = optTrace.isPruned(joinId);
+            if (reason != null) {
+                valid = false;
+            }
+            else if (optTrace.isValidUnderConstraints(joinId)) {
+                valid = true;
+            }
+            else if (optTrace.planConstraints != null && optTrace.planConstraints.size() > 0) {
+                JoinConstraintNode joinConstraintNode = optTrace.joinConstraintNode(planNode, null, false);
+                valid = joinConstraintNode.joinIsValid(optTrace.planConstraints, optTrace);
+
+                if (valid) {
+                    optTrace.setIsValidUnderConstraints(joinId);
+                }
+                else {
+                    reason = PruneReason.CONSTRAINT;
+                    optTrace.addPrunedJoinId(joinId, reason);
+                }
+            }
+            else {
+                valid = true;
+            }
+
+            if (reason != null) {
+                Pair<String, String> joinStrings = optTrace.getJoinStrings(planNode);
+                requireNonNull(joinStrings, "join strings are null");
+                requireNonNull(joinStrings.getKey(), "join string is null");
+                optTrace.msg("Join not valid (** PRUNED BY %s **) : (%s , join id %d)",
+                        true, reason.getString().toUpperCase(), joinStrings.getKey(), joinId.intValue());
+            }
+        }
+        else {
+            valid = true;
+        }
+
+        return valid;
+    }
+
+    public static String nodeLocation(Node node)
+    {
+        String locationString;
+        if (node.getLocation().isPresent()) {
+            locationString = nodeLocationToString(node.getLocation().get());
+        }
+        else {
+            locationString = null;
+        }
+
+        return locationString;
+    }
+
+    public static String nodeLocationToString(NodeLocation location)
+    {
+        String locationString = new String(location.getLineNumber() + ":" + location.getColumnNumber());
+
+        return locationString;
+    }
+
+    public static String sourceLocationToString(SourceLocation location)
+    {
+        String locationString = new String(location.getLine() + ":" + location.getColumn());
+
+        return locationString;
+    }
+
+    private static String tableName(TableScanNode tableScanNode, OptTrace optTrace)
+    {
+        String str = null;
+
+        if (optTrace != null && optTrace.locationToTableOrAliasNameMap != null &&
+                tableScanNode.getSourceLocation().isPresent()) {
+            String locationString = sourceLocationToString(tableScanNode.getSourceLocation().get());
+
+            if (optTrace.locationToTableOrAliasNameMap.containsKey(locationString)) {
+                List<String> nameOrAliasList = optTrace.locationToTableOrAliasNameMap.get(locationString).stream().collect(toList());
+                checkArgument(nameOrAliasList.size() == 1, format("multiple (or zero) table name/aliases at location %s", locationString));
+
+                str = nameOrAliasList.get(0);
+            }
+        }
+
+        if (str == null) {
+            str = tableScanNode.getTable().getConnectorHandle().toString();
+            String token = new String("tableName=");
+            int startPos = str.indexOf(token);
+            if (startPos != -1) {
+                startPos += token.length();
+                int endPos = str.indexOf(",", startPos);
+
+                if (endPos != -1) {
+                    str = str.substring(startPos, endPos);
+                }
+            }
+        }
+
+        return str;
+    }
+
+    public static void doIndent(BufferedWriter bufferedWriter, int indentCnt)
+    {
+        try {
+            for (int i = 0; i < indentCnt; ++i) {
+                bufferedWriter.write(" ");
+            }
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -571,82 +953,6 @@ public class OptTrace
         end("assignTraceIds");
     }
 
-    private class TableScanComparator
-            implements Comparator<TableScanNode>
-    {
-        public int compare(TableScanNode tableScan1, TableScanNode tableScan2)
-        {
-            String str1 = tableScan1.getTable().getConnectorHandle().toString();
-            String str2 = tableScan2.getTable().getConnectorHandle().toString();
-
-            int cmp = str1.compareTo(str2);
-
-            return cmp;
-        }
-    }
-
-    private class PlanNodeTableScanCntComparator
-            implements Comparator<PlanNode>
-    {
-        private OptTrace optTrace;
-
-        public PlanNodeTableScanCntComparator(OptTrace optTraceParam)
-        {
-            requireNonNull(optTraceParam, "opt trace is null");
-            optTrace = optTraceParam;
-        }
-
-        public int compare(PlanNode planNode1, PlanNode planNode2)
-        {
-            int cnt1 = optTrace.getTableScanCnt(planNode1);
-            int cnt2 = optTrace.getTableScanCnt(planNode2);
-
-            int cmp;
-
-            cmp = cnt1 - cnt2;
-
-            if (cmp == 0) {
-                Integer traceId1 = optTrace.getTraceId(planNode1);
-                Integer traceId2 = optTrace.getTraceId(planNode2);
-
-                cmp = traceId1.intValue() - traceId2.intValue();
-            }
-
-            return cmp;
-        }
-    }
-
-    private class TableScanNameLocationComparator
-            implements Comparator<TableScanNode>
-    {
-        private OptTrace optTrace;
-
-        public TableScanNameLocationComparator(OptTrace optTraceParam)
-        {
-            requireNonNull(optTraceParam, "opt trace is null");
-            optTrace = optTraceParam;
-        }
-
-        public int compare(TableScanNode tableScanNode1, TableScanNode tableScanNode2)
-        {
-            String name1 = tableName(tableScanNode1, optTrace);
-            String name2 = tableName(tableScanNode2, optTrace);
-
-            int cmp = name1.compareTo(name2);
-
-            if (cmp == 0) {
-                if (tableScanNode1.getSourceLocation().isPresent() && tableScanNode2.getSourceLocation().isPresent()) {
-                    name1 = name1 + sourceLocationToString(tableScanNode1.getSourceLocation().get());
-                    name2 = name2 + sourceLocationToString(tableScanNode2.getSourceLocation().get());
-
-                    cmp = name1.compareTo(name2);
-                }
-            }
-
-            return cmp;
-        }
-    }
-
     private String tableScanLookUpString(TableScanNode tableScanNode)
     {
         StringBuilder builder = new StringBuilder();
@@ -673,32 +979,6 @@ public class OptTrace
         }
 
         return builder.toString();
-    }
-
-    @Immutable
-    public static class Pair<K, V>
-    {
-        private final K key;
-        private final V value;
-
-        @JsonCreator
-        public Pair(@JsonProperty("key") K key, @JsonProperty("value") V value)
-        {
-            this.key = requireNonNull(key, "key is null");
-            this.value = requireNonNull(value, "value is null");
-        }
-
-        @JsonProperty
-        public K getKey()
-        {
-            return key;
-        }
-
-        @JsonProperty
-        public V getValue()
-        {
-            return value;
-        }
     }
 
     private String getLookUpString(PlanNode planNode, boolean... ignoreDistributionType)
@@ -919,50 +1199,6 @@ public class OptTrace
         return joinId;
     }
 
-    public static void begin(Optional<OptTrace> optTraceParam, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.begin(msgString, args));
-    }
-
-    public static void clearCaches(Optional<OptTrace> optTraceParam)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.clearCaches());
-    }
-
-    public static void setAnalysis(Optional<OptTrace> optTraceParam, Analysis analysis)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.setAnalysis(analysis));
-    }
-
-    public static void checkForDuplicateTableName(Optional<OptTrace> optTraceParam, String tableOrAliasName, String nodeLocation, boolean isAlias)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.checkForDuplicateTableName(tableOrAliasName, nodeLocation, isAlias));
-    }
-
-    public static void addPrunedJoinId(Optional<OptTrace> optTraceParam, Integer joinId, PruneReason reason)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.addPrunedJoinId(joinId, reason));
-    }
-
-    public static void addPlanNodeToPreferredPropertiesMapping(Optional<OptTrace> optTraceParam, PlanNode planNode, PreferredProperties preferredProperties)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.addPlanNodeToPreferredPropertiesMapping(planNode, preferredProperties));
-    }
-
-    public static void tracePlanNodeStatsEstimate(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
-    {
-        if (optTraceParam.isPresent()) {
-            optTraceParam.get().tracePlanNodeStatsEstimate(planNode, indentCnt, msgString, args);
-        }
-    }
-
-    public static void traceMemo(Optional<OptTrace> optTraceParam)
-    {
-        if (optTraceParam.isPresent()) {
-            optTraceParam.get().traceMemo();
-        }
-    }
-
     public void tracePlanNodeStatsEstimate(PlanNode planNode, int indentCnt, String msgString, Object... args)
     {
         incrIndent(indentCnt);
@@ -982,140 +1218,6 @@ public class OptTrace
         }
 
         decrIndent(indentCnt);
-    }
-
-    public static void traceVariableReferenceExpressionList(Optional<OptTrace> optTraceParam, List<VariableReferenceExpression> varList, int indentCnt,
-            String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.traceVariableReferenceExpressionList(varList, indentCnt, msgString, args));
-    }
-
-    public static void tracePreferredProperties(Optional<OptTrace> optTraceParam, PreferredProperties preferredProperties, PlanNode planNode, int indentCnt,
-            String msgString, Object... args)
-    {
-        if (preferredProperties != null) {
-            optTraceParam.ifPresent(optTrace -> optTrace.tracePreferredProperties(preferredProperties, indentCnt, msgString, args));
-        }
-    }
-
-    public static PruneReason isPruned(Optional<OptTrace> optTraceParam, Integer traceId)
-    {
-        PruneReason pruned;
-        if (optTraceParam.isPresent()) {
-            OptTrace optTrace = optTraceParam.get();
-            pruned = optTrace.isPruned(traceId);
-        }
-        else {
-            pruned = null;
-        }
-
-        return pruned;
-    }
-
-    public static void queryInfo(Optional<OptTrace> optTraceParam)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.queryInfo());
-    }
-
-    public static void addEnumeratedJoin(Optional<OptTrace> optTraceParam, PlanNode planNode)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.addEnumeratedJoin(planNode));
-    }
-
-    public static void traceJoinIdMap(Optional<OptTrace> optTraceParam, int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinIdMap(indentCnt, msgString, args));
-    }
-
-    public static void trace(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanNode(planNode, indentCnt, msgString, args));
-    }
-
-    public static void trace(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, int maxDepth, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanNode(planNode, indentCnt, msgString, maxDepth, args));
-    }
-
-    public static void traceEnumeratedJoins(Optional<OptTrace> optTraceParam, PlanNode root, CostProvider costProvider, StatsProvider statsProvider,
-            int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.traceEnumeratedJoins(root, costProvider, statsProvider, indentCnt, msgString, args));
-    }
-
-    public static void traceJoinConstraint(Optional<OptTrace> optTraceParam, PlanNode planNode, int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinConstraint(planNode, indentCnt, msgString, args));
-    }
-
-    public static void trace(Optional<OptTrace> optTraceParam, PlanCostEstimate planCostEstimate, int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.tracePlanCostEstimate(planCostEstimate, indentCnt, msgString, args));
-    }
-
-    public static void msg(Optional<OptTrace> optTraceParam, String msgString, boolean eol, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.msg(msgString, eol, args));
-    }
-
-    public static void end(Optional<OptTrace> optTraceParam, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.end(msgString, args));
-    }
-
-    public static void incrIndent(Optional<OptTrace> optTraceParam, int indentCnt)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.incrIndent(indentCnt));
-    }
-
-    public static void decrIndent(Optional<OptTrace> optTraceParam, int indentCnt)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.decrIndent(indentCnt));
-    }
-
-    public static void trace(Optional<OptTrace> optTraceParam, Set<Integer> partition, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.tracePartition(partition, msgString, args));
-    }
-
-    public static void trace(Optional<OptTrace> optTraceParam, Set<PlanNode> sources, int indentCnt, String msgString, Object... args)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.traceJoinSources(sources, indentCnt, msgString, args));
-    }
-
-    private static PlanNode findRootJoin(PlanNode planNode, Lookup lookUp)
-    {
-        requireNonNull(planNode, "plan node is null");
-
-        PlanNode rootJoinNode = null;
-        if (planNode instanceof JoinNode || planNode instanceof SemiJoinNode) {
-            rootJoinNode = planNode;
-        }
-        else if (planNode instanceof GroupReference) {
-            GroupReference groupReference = (GroupReference) planNode;
-            Stream<PlanNode> planNodes = lookUp.resolveGroup(groupReference);
-            Optional<PlanNode> groupPlanNode = planNodes.findFirst();
-            if (groupPlanNode.isPresent()) {
-                PlanNode tmpNode = groupPlanNode.get();
-                rootJoinNode = findRootJoin(tmpNode, lookUp);
-            }
-        }
-        else {
-            for (PlanNode source : planNode.getSources()) {
-                PlanNode sourceRootJoinNode = findRootJoin(source, lookUp);
-                if (sourceRootJoinNode != null) {
-                    if (rootJoinNode != null) {
-                        rootJoinNode = null;
-                        break;
-                    }
-                    else {
-                        rootJoinNode = sourceRootJoinNode;
-                    }
-                }
-            }
-        }
-
-        return rootJoinNode;
     }
 
     public String joinConstraintString(PlanNode planNode, boolean... ignoreDistributionType)
@@ -1277,16 +1379,6 @@ public class OptTrace
         return joinConstraintNode;
     }
 
-    public static JoinConstraintNode joinConstraintNode(Optional<OptTrace> optTraceParam, JoinNode joinNode, boolean ignoreDistributionType)
-    {
-        JoinConstraintNode joinConstraintNode = null;
-        if (optTraceParam.isPresent()) {
-            joinConstraintNode = optTraceParam.get().joinConstraintNode(joinNode, null, ignoreDistributionType);
-        }
-
-        return joinConstraintNode;
-    }
-
     public void addSubPlans(List<SubPlan> subPlansParam)
     {
         requireNonNull(subPlansParam);
@@ -1306,35 +1398,10 @@ public class OptTrace
         return subPlan;
     }
 
-    public static void addSubPlans(Optional<OptTrace> optTraceParam, List<SubPlan> subPlansParam)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.addSubPlans(subPlansParam));
-    }
-
-    public static JoinConstraintNode joinConstraintNode(Optional<OptTrace> optTraceParam, SemiJoinNode semiJoinNode, boolean ignoreDistributionType)
-    {
-        JoinConstraintNode joinConstraintNode = null;
-        if (optTraceParam.isPresent()) {
-            joinConstraintNode = optTraceParam.get().joinConstraintNode(semiJoinNode, null, ignoreDistributionType);
-        }
-
-        return joinConstraintNode;
-    }
-
-    public static void assignTraceIds(Optional<OptTrace> optTraceParam, PlanNode node, Analysis analysis)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.assignTraceIds(node, analysis));
-    }
-
     private void addJoinConstraintNode(PlanNode node)
     {
         JoinConstraintNode joinConstraintNode = joinConstraintNode(node, null);
         planConstraints.add(joinConstraintNode);
-    }
-
-    public static void addJoinConstraintNode(Optional<OptTrace> optTraceParam, PlanNode node)
-    {
-        optTraceParam.ifPresent(optTrace -> optTrace.addJoinConstraintNode(node));
     }
 
     public boolean satisfiesAnyJoinConstraint(PlanNode planNode, boolean... ignoreDistributionType)
@@ -1369,54 +1436,6 @@ public class OptTrace
         return cardinality;
     }
 
-    public static boolean constraintsPresent(Optional<OptTrace> optTraceParam)
-    {
-        boolean constraintsPresent = false;
-        if (optTraceParam.isPresent()) {
-            constraintsPresent = (optTraceParam.get().planConstraints != null && optTraceParam.get().planConstraints.size() > 0);
-        }
-
-        return constraintsPresent;
-    }
-
-    public static boolean joinConstraintsPresent(Optional<OptTrace> optTraceParam)
-    {
-        boolean joinConstraintsPresent = false;
-        if (optTraceParam.isPresent()) {
-            if (optTraceParam.get().planConstraints != null && optTraceParam.get().planConstraints.size() > 0) {
-                for (JoinConstraintNode constraint : optTraceParam.get().planConstraints) {
-                    if (constraint.constraintType() != null && constraint.constraintType() == JoinConstraintNode.ConstraintType.JOIN) {
-                        joinConstraintsPresent = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return joinConstraintsPresent;
-    }
-
-    public static boolean satisfiesAnyJoinConstraint(Optional<OptTrace> optTraceParam, PlanNode planNode, boolean... ignoreDistributionType)
-    {
-        boolean satifiesAny = false;
-        if (optTraceParam.isPresent()) {
-            satifiesAny = optTraceParam.get().satisfiesAnyJoinConstraint(planNode, ignoreDistributionType);
-        }
-
-        return satifiesAny;
-    }
-
-    public static PlanNodeStatsEstimate stats(Optional<OptTrace> optTraceParam, PlanNode planNode, PlanNodeStatsEstimate stats)
-    {
-        PlanNodeStatsEstimate newStats = null;
-
-        if (optTraceParam.isPresent()) {
-            newStats = optTraceParam.get().planNodeStats(planNode, stats);
-        }
-
-        return newStats;
-    }
-
     public PlanNodeStatsEstimate planNodeStats(PlanNode planNode, PlanNodeStatsEstimate stats)
     {
         PlanNodeStatsEstimate newStats = null;
@@ -1437,135 +1456,6 @@ public class OptTrace
         }
 
         return newStats;
-    }
-
-    public static boolean valid(Optional<OptTrace> optTraceParam, PlanNode planNode)
-    {
-        boolean valid;
-
-        if (optTraceParam.isPresent()) {
-            OptTrace optTrace = optTraceParam.get();
-
-            Integer joinId = optTrace.getJoinId(planNode);
-
-            PruneReason reason = optTrace.isPruned(joinId);
-            if (reason != null) {
-                valid = false;
-            }
-            else if (optTrace.isValidUnderConstraints(joinId)) {
-                valid = true;
-            }
-            else if (optTrace.planConstraints != null && optTrace.planConstraints.size() > 0) {
-                JoinConstraintNode joinConstraintNode = optTrace.joinConstraintNode(planNode, null, false);
-                valid = joinConstraintNode.joinIsValid(optTrace.planConstraints, optTrace);
-
-                if (valid) {
-                    optTrace.setIsValidUnderConstraints(joinId);
-                }
-                else {
-                    reason = PruneReason.CONSTRAINT;
-                    optTrace.addPrunedJoinId(joinId, reason);
-                }
-            }
-            else {
-                valid = true;
-            }
-
-            if (reason != null) {
-                Pair<String, String> joinStrings = optTrace.getJoinStrings(planNode);
-                requireNonNull(joinStrings, "join strings are null");
-                requireNonNull(joinStrings.getKey(), "join string is null");
-                optTrace.msg("Join not valid (** PRUNED BY %s **) : (%s , join id %d)",
-                        true, reason.getString().toUpperCase(), joinStrings.getKey(), joinId.intValue());
-            }
-        }
-        else {
-            valid = true;
-        }
-
-        return valid;
-    }
-
-    public enum VisitType
-    {
-        NONE, PRINT, FIND_TABLES, BUILD_JOIN_STRING, CNT_TABLES, CNT_JOINS
-    }
-
-    public enum PruneReason
-    {
-        COST("cost"),
-        CONSTRAINT("constraint");
-
-        private String string;
-
-        PruneReason(String stringRep)
-        {
-            this.string = stringRep;
-        }
-
-        public String getString()
-        {
-            return string;
-        }
-    }
-
-    private class OptTraceContext
-    {
-        private OptTrace optTrace;
-        LinkedHashSet<TableScanNode> tableScans;
-        VisitType visitType;
-        String joinString;
-        int tableCnt;
-        int joinCnt;
-
-        public OptTraceContext(OptTrace optTraceParam, VisitType visitTypeParam)
-        {
-            requireNonNull(optTraceParam, "trace is null");
-            optTrace = optTraceParam;
-            visitType = visitTypeParam;
-            joinString = null;
-            tableCnt = 0;
-            joinCnt = 0;
-        }
-
-        public void clearTableScans()
-        {
-            if (tableScans != null) {
-                tableScans.clear();
-            }
-        }
-
-        public void clearVisitType()
-        {
-            visitType = null;
-        }
-
-        public void clear()
-        {
-            clearVisitType();
-            clearTableScans();
-            joinString = null;
-            tableCnt = 0;
-        }
-
-        public OptTrace optTrace()
-        {
-            return optTrace;
-        }
-
-        public void addTableScan(TableScanNode tableScanNode)
-        {
-            if (tableScans == null) {
-                tableScans = new LinkedHashSet<TableScanNode>();
-            }
-
-            tableScans.add(tableScanNode);
-        }
-
-        LinkedHashSet<TableScanNode> tableScans()
-        {
-            return tableScans;
-        }
     }
 
     public String tableScansToString(LinkedHashSet<TableScanNode> tableScans)
@@ -1602,1176 +1492,6 @@ public class OptTrace
         builder.append(")");
 
         return builder.toString();
-    }
-
-    public static String nodeLocation(Node node)
-    {
-        String locationString;
-        if (node.getLocation().isPresent()) {
-            locationString = nodeLocationToString(node.getLocation().get());
-        }
-        else {
-            locationString = null;
-        }
-
-        return locationString;
-    }
-
-    public static String nodeLocationToString(NodeLocation location)
-    {
-        String locationString = new String(location.getLineNumber() + ":" + location.getColumnNumber());
-
-        return locationString;
-    }
-
-    public static String sourceLocationToString(SourceLocation location)
-    {
-        String locationString = new String(location.getLine() + ":" + location.getColumn());
-
-        return locationString;
-    }
-
-    private static class OptTraceTraversalVisitor
-            extends DefaultTraversalVisitor<RelationPlan, SqlPlannerContext>
-    {
-        private final OptTrace optTrace;
-        private final Analysis analysis;
-
-        OptTraceTraversalVisitor(OptTrace optTraceParam, Analysis analysisParam)
-        {
-            requireNonNull(optTraceParam, "null opt trace");
-            requireNonNull(analysisParam, "null analysis");
-            optTrace = optTraceParam;
-            analysis = analysisParam;
-        }
-
-        @Override
-        public RelationPlan process(Node node, @Nullable SqlPlannerContext context)
-        {
-            return super.process(node, context);
-        }
-
-        @Override
-        protected RelationPlan visitQuery(Query node, SqlPlannerContext context)
-        {
-            //node.getWith().ifPresent(with -> process(with, context));
-
-            process(node.getQueryBody(), context);
-
-            node.getOrderBy().ifPresent(orderBy -> process(orderBy, context));
-
-            return null;
-        }
-
-        @Override
-        protected RelationPlan visitAliasedRelation(AliasedRelation node, SqlPlannerContext context)
-        {
-            requireNonNull(node.getAlias(), "alias is null");
-
-            String aliasName = node.getAlias().getValue();
-            String locationString;
-            if (node.getLocation().isPresent()) {
-                locationString = nodeLocationToString(node.getLocation().get());
-            }
-            else {
-                return null;
-            }
-
-            optTrace.checkForDuplicateTableName(aliasName, locationString, true);
-
-            Relation relation = node.getRelation();
-
-            if (relation instanceof Table) {
-                Table table = (Table) relation;
-                if (table.getName().toString().equals(aliasName)) {
-                    return null;
-                }
-            }
-
-            return process(relation, context);
-        }
-
-        @Override
-        protected RelationPlan visitTable(Table node, SqlPlannerContext context)
-        {
-            Query namedQuery = analysis.getNamedQuery(node);
-
-            if (namedQuery != null) {
-                return process(namedQuery, context);
-            }
-
-            String locationString;
-            if (node.getLocation().isPresent()) {
-                locationString = optTrace.nodeLocationToString(node.getLocation().get());
-            }
-            else {
-                return null;
-            }
-
-            optTrace.checkForDuplicateTableName(node.getName().toString(), locationString, false);
-
-            return null;
-        }
-    }
-
-    private static class OptTracePlanVisitor
-            extends InternalPlanVisitor<PlanNode, OptTraceContext>
-    {
-        private int currentDepth;
-        private int maxDepth;
-        public OptTracePlanVisitor()
-        {
-            currentDepth = 0;
-            maxDepth = 10000;
-        }
-
-        public OptTracePlanVisitor(int maxDepthParam)
-        {
-            currentDepth = 0;
-            maxDepth = maxDepthParam;
-        }
-
-        private void incrementDepth()
-        {
-            ++currentDepth;
-        }
-
-        private void decrementDepth()
-        {
-            --currentDepth;
-        }
-
-        private boolean checkDepth()
-        {
-            boolean check;
-            if (maxDepth >= 0 && currentDepth > maxDepth) {
-                check = false;
-            }
-            else {
-                check = true;
-            }
-
-            return check;
-        }
-
-        @Override
-        public PlanNode visitPlan(PlanNode planNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(planNode);
-                    optTrace.msg(planNode.getClass().getSimpleName() + " " + "(node id " + planNode.getId()
-                            + ", join id " + joinId + ")", true);
-
-                    optTrace.traceVariableReferenceExpressionList(planNode.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(planNode, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(planNode, 1, "Estimated stats :");
-
-                    int childId = 0;
-                    for (PlanNode child : planNode.getSources()) {
-                        if (checkDepth()) {
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Child %d :", true, childId);
-                            optTrace.incrIndent(1);
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            optTrace.decrIndent(2);
-                            decrementDepth();
-                        }
-                        else {
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Child %d : ...", true, childId);
-                            optTrace.decrIndent(1);
-                        }
-
-                        ++childId;
-                    }
-
-                    break;
-                }
-
-                case BUILD_JOIN_STRING: {
-                    if (planNode.getSources().size() > 1) {
-                        int childId = 0;
-                        for (PlanNode child : planNode.getSources()) {
-                            if (optTraceContext.joinString == null) {
-                                optTraceContext.joinString = new String();
-                            }
-
-                            if (childId == 0) {
-                                optTraceContext.joinString = optTraceContext.joinString + "(";
-                            }
-                            else {
-                                optTraceContext.joinString = optTraceContext.joinString + " ";
-                            }
-
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            decrementDepth();
-                            ++childId;
-                        }
-
-                        if (childId > 0) {
-                            optTraceContext.joinString = optTraceContext.joinString + ")";
-                        }
-                    }
-                    else if (planNode.getSources().size() == 0) {
-                        Integer traceId = optTrace.getTraceId(planNode);
-                        if (optTraceContext.joinString == null) {
-                            optTraceContext.joinString = new String();
-                        }
-
-                        optTraceContext.joinString = optTraceContext.joinString + format("%s-%s", planNode.getClass().getSimpleName(), traceId);
-                    }
-                    else {
-                        for (PlanNode child : planNode.getSources()) {
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            decrementDepth();
-                        }
-                    }
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : planNode.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitApply(ApplyNode applyNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(applyNode);
-                    optTrace.msg(applyNode.getClass().getSimpleName() + " " + "(node id " + applyNode.getId()
-                            + ", join id " + joinId + ")", true);
-
-                    optTrace.incrIndent(1);
-                    optTrace.msg("May participate in anti-join? : %s", true, applyNode.getMayParticipateInAntiJoin() ? "true" : "false");
-
-                    Assignments subqueryAssignments = applyNode.getSubqueryAssignments();
-                    Map<VariableReferenceExpression, RowExpression> assignmentMap = subqueryAssignments.getMap();
-                    optTrace.msg("Subquery assignments :", true);
-                    optTrace.incrIndent(1);
-                    int cnt = 0;
-                    for (Map.Entry<VariableReferenceExpression, RowExpression> assignmentMapEntry : assignmentMap.entrySet()) {
-                        optTrace.msg("%d : %s => %s", true, cnt, assignmentMapEntry.getKey().getName(),
-                                assignmentMapEntry.getValue().toString());
-                        ++cnt;
-                    }
-                    optTrace.decrIndent(1);
-
-                    String expressionString = Joiner.on(" AND ").join(subqueryAssignments.getExpressions());
-                    optTrace.msg("Expression string : %s", true, expressionString);
-
-                    optTrace.traceVariableReferenceExpressionList(subqueryAssignments.getVariables().stream().collect(toList()), 0, "Assignment output variables :");
-
-                    cnt = 0;
-                    for (RowExpression expression : subqueryAssignments.getExpressions()) {
-                        if (expression instanceof InSubqueryExpression) {
-                            if (cnt == 0) {
-                                optTrace.msg("In subquery expression vars :", true);
-                            }
-
-                            InSubqueryExpression inPredicate = (InSubqueryExpression) expression;
-
-                            VariableReferenceExpression leftVariableReference = inPredicate.getValue();
-                            VariableReferenceExpression rightVariableReference = inPredicate.getSubquery();
-
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Left var  : %s (%s)", true, leftVariableReference.getName(), leftVariableReference.getType().getDisplayName());
-                            optTrace.msg("Right var : %s (%s)", true, rightVariableReference.getName(), rightVariableReference.getType().getDisplayName());
-                            optTrace.decrIndent(1);
-                            ++cnt;
-                        }
-                    }
-
-                    if (applyNode.getCorrelation().size() > 0) {
-                        optTrace.traceVariableReferenceExpressionList(applyNode.getCorrelation(), 1, "Correlations :");
-                    }
-
-                    optTrace.decrIndent(1);
-
-                    optTrace.traceVariableReferenceExpressionList(applyNode.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(applyNode, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(applyNode, 1, "Estimated stats :");
-
-                    if (checkDepth()) {
-                        PlanNode input = applyNode.getInput();
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Input :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        input.accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-
-                        PlanNode subquery = applyNode.getSubquery();
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Subquery :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        subquery.accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Input : ...", true);
-                        optTrace.decrIndent(1);
-
-                        PlanNode subquery = applyNode.getSubquery();
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Subquery : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : applyNode.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitRemoteSource(RemoteSourceNode remoteSourceNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-            List<PlanFragmentId> fragmentIds = remoteSourceNode.getSourceFragmentIds();
-            boolean processed = false;
-
-            switch (optTraceContext.visitType) {
-                case BUILD_JOIN_STRING: {
-                    if (fragmentIds.size() == 1) {
-                        PlanFragmentId planFragmentId = fragmentIds.get(0);
-                        SubPlan subPlan = optTrace.findSubPlan(planFragmentId);
-
-                        if (subPlan != null) {
-                            PlanNode fragmentRootNode = subPlan.getFragment().getRoot();
-
-                            incrementDepth();
-                            fragmentRootNode.accept(this, optTraceContext);
-                            decrementDepth();
-                            processed = true;
-                        }
-                    }
-
-                    break;
-                }
-
-                default:
-                    break;
-            }
-
-            if (!processed) {
-                for (PlanFragmentId planFragmentId : fragmentIds) {
-                    SubPlan subPlan = optTrace.findSubPlan(planFragmentId);
-
-                    if (subPlan != null) {
-                        PlanNode fragmentRootNode = subPlan.getFragment().getRoot();
-                        incrementDepth();
-                        fragmentRootNode.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitGroupReference(GroupReference groupReference, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            requireNonNull(optTrace.lookUp(), "loopUp is null");
-            Stream<PlanNode> planNodes;
-
-            try {
-                planNodes = optTrace.lookUp().resolveGroup(groupReference);
-            }
-            catch (Exception e) {
-                planNodes = null;
-            }
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    int groupId = groupReference.getGroupId();
-
-                    optTrace.msg("Group id " + groupId + " : ", true);
-
-                    if (planNodes != null) {
-                        AtomicInteger count = new AtomicInteger(-1);
-                        planNodes.forEach(member -> {
-                            if (checkDepth()) {
-                                optTrace.incrIndent(1);
-                                optTrace.msg("Member %d :", true, count.incrementAndGet());
-                                optTrace.incrIndent(1);
-                                incrementDepth();
-                                member.accept(this, optTraceContext);
-                                optTrace.decrIndent(2);
-                                decrementDepth();
-                            }
-                            else {
-                                optTrace.incrIndent(1);
-                                optTrace.msg("Member %d : ...", true, count.incrementAndGet());
-                                optTrace.decrIndent(1);
-                            }
-                        });
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("<no members>", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    break;
-                }
-
-                default: {
-                    if (planNodes != null) {
-                        planNodes.forEach(member -> {
-                            incrementDepth();
-                            member.accept(this, optTraceContext);
-                            decrementDepth();
-                        });
-                    }
-
-                    break;
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitAggregation(AggregationNode aggregationNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(aggregationNode);
-                    optTrace.msg("Aggregation (node id " + aggregationNode.getId()
-                            + ", join id " + joinId + ")", true);
-
-                    optTrace.incrIndent(1);
-                    optTrace.traceVariableReferenceExpressionList(aggregationNode.getOutputVariables(), 0, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(aggregationNode, 0, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(aggregationNode, 1, "Estimated stats :");
-
-                    optTrace.msg("Distinct? : %s", true, AggregationNode.isDistinct(aggregationNode) ? "true" : "false");
-
-                    optTrace.traceVariableReferenceExpressionList(aggregationNode.getGroupingKeys(), 0, "Grouping keys :");
-
-                    AggregationNode.GroupingSetDescriptor groupingSets = aggregationNode.getGroupingSets();
-                    if (groupingSets != null) {
-                        optTrace.msg("Grouping set descriptor", true);
-                        optTrace.incrIndent(1);
-                        optTrace.traceVariableReferenceExpressionList(groupingSets.getGroupingKeys(), 1, "Grouping keys :");
-
-                        Set<Integer> globalGroupingSets = groupingSets.getGlobalGroupingSets();
-
-                        if (!globalGroupingSets.isEmpty()) {
-                            optTrace.msg("Global grouping sets :", true);
-                            optTrace.incrIndent(1);
-                            int cnt = 0;
-                            for (Integer globalGroupingSetId : globalGroupingSets) {
-                                optTrace.msg("%d : %d", true, cnt, globalGroupingSetId.intValue());
-                                ++cnt;
-                            }
-                            optTrace.decrIndent(1);
-                        }
-
-                        optTrace.decrIndent(1);
-                    }
-
-                    optTrace.msg("Has default output? : %s", true, aggregationNode.hasDefaultOutput() ? "true" : "false");
-
-                    Map<VariableReferenceExpression, AggregationNode.Aggregation> aggregations = aggregationNode.getAggregations();
-                    if (aggregations != null) {
-                        optTrace.msg("Aggregations :", true);
-                        optTrace.incrIndent(1);
-                        int cnt = 0;
-                        for (Map.Entry<VariableReferenceExpression, AggregationNode.Aggregation> aggregationMapEntry : aggregations.entrySet()) {
-                            AggregationNode.Aggregation aggregation = aggregationMapEntry.getValue();
-
-                            StringBuilder builder = new StringBuilder(format("%d : %s => %s(", cnt, aggregationMapEntry.getKey().getName(),
-                                    aggregation.getCall().getDisplayName()));
-
-                            boolean first = true;
-                            for (RowExpression argument : aggregation.getArguments()) {
-                                if (!first) {
-                                    builder.append(" , ");
-                                }
-
-                                builder.append(format("%s", argument.toString()));
-
-                                first = false;
-                            }
-                            builder.append(")");
-                            optTrace.msg(builder.toString(), true);
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Distinct? : %s", true, aggregation.isDistinct() ? "true" : "false");
-
-                            if (aggregation.getOrderBy().isPresent()) {
-                                optTrace.msg("Ordering ? : %s", true, aggregation.getOrderBy().get());
-                            }
-
-                            if (aggregation.getFilter().isPresent()) {
-                                optTrace.msg("Filter ? : %s", true, aggregation.getFilter().get().toString());
-                            }
-
-                            optTrace.decrIndent(1);
-                            ++cnt;
-                        }
-                        optTrace.decrIndent(1);
-                    }
-
-                    List<VariableReferenceExpression> preGroupedVariables = aggregationNode.getPreGroupedVariables();
-                    optTrace.traceVariableReferenceExpressionList(preGroupedVariables, 1, "Pregrouped variables :");
-
-                    Optional<VariableReferenceExpression> hashVariable = aggregationNode.getHashVariable();
-                    if (hashVariable.isPresent()) {
-                        optTrace.msg("Hash variable ? : %s", true, hashVariable.get().toString());
-                    }
-
-                    Optional<VariableReferenceExpression> groupIdVariable = aggregationNode.getGroupIdVariable();
-                    if (groupIdVariable.isPresent()) {
-                        optTrace.msg("Group id variable ? : %s", true, groupIdVariable.get().toString());
-                    }
-
-                    if (checkDepth()) {
-                        PlanNode child = aggregationNode.getSource();
-                        optTrace.msg("Child :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.msg("Child : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : aggregationNode.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-
-                    break;
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitProject(ProjectNode projectNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(projectNode);
-                    optTrace.msg("Project (node id " + projectNode.getId()
-                            + ", join id " + joinId + ")", true);
-
-                    optTrace.incrIndent(1);
-                    optTrace.traceVariableReferenceExpressionList(projectNode.getOutputVariables(), 0, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(projectNode, 0, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(projectNode, 1, "Estimated stats :");
-
-                    Assignments assignments = projectNode.getAssignments();
-                    Map<VariableReferenceExpression, RowExpression> assignmentMap = assignments.getMap();
-                    optTrace.msg("Assignments :", true);
-                    optTrace.incrIndent(1);
-                    int cnt = 0;
-                    for (Map.Entry<VariableReferenceExpression, RowExpression> assignmentMapEntry : assignmentMap.entrySet()) {
-                        optTrace.msg("%d : %s => %s", true, cnt, assignmentMapEntry.getKey().getName(),
-                                assignmentMapEntry.getValue().toString());
-                        ++cnt;
-                    }
-                    optTrace.decrIndent(1);
-
-                    optTrace.msg("Locality : %s", true, projectNode.getLocality());
-
-                    if (projectNode.getSourceLocation().isPresent() && projectNode.getSourceLocation().get() != null) {
-                        String locationStr = sourceLocationToString(projectNode.getSourceLocation().get());
-                        optTrace.msg("Location : %s", true, locationStr);
-                    }
-
-                    optTrace.decrIndent(1);
-
-                    cnt = 0;
-                    optTrace.incrIndent(1);
-                    for (PlanNode child : projectNode.getSources()) {
-                        if (checkDepth()) {
-                            optTrace.msg("Child %d :", true, cnt);
-                            optTrace.incrIndent(1);
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            optTrace.decrIndent(1);
-                            decrementDepth();
-                        }
-                        else {
-                            optTrace.msg("Child %d : ...", true, cnt);
-                        }
-
-                        ++cnt;
-                    }
-                    optTrace.decrIndent(1);
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : projectNode.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-
-                    break;
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitFilter(FilterNode filterNode, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(filterNode);
-                    optTrace.msg("Filter (node id " + filterNode.getId()
-                            + ", join id " + joinId + ")", true);
-
-                    optTrace.traceVariableReferenceExpressionList(filterNode.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(filterNode, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(filterNode, 1, "Estimated stats :");
-
-                    optTrace.incrIndent(1);
-                    optTrace.msg("Predicate :", true);
-                    optTrace.incrIndent(1);
-                    optTrace.msg(filterNode.getPredicate().toString(), true, null);
-                    optTrace.decrIndent(2);
-
-                    int cnt = 0;
-                    optTrace.incrIndent(1);
-                    for (PlanNode child : filterNode.getSources()) {
-                        if (checkDepth()) {
-                            optTrace.msg("Child %d :", true, cnt);
-                            optTrace.incrIndent(1);
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            optTrace.decrIndent(1);
-                            decrementDepth();
-                        }
-                        else {
-                            optTrace.msg("Child %d : ...", true, cnt);
-                        }
-                        ++cnt;
-                    }
-                    optTrace.decrIndent(1);
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : filterNode.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-
-                    break;
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitExchange(ExchangeNode exchange, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    ExchangeNode.Type type = exchange.getType();
-                    ExchangeNode.Scope scope = exchange.getScope();
-                    PartitioningScheme partitioningScheme = exchange.getPartitioningScheme();
-
-                    optTrace.msg("ExchangeNode[%s] (node id %s)", true, exchange.getType(), exchange.getId());
-                    optTrace.traceVariableReferenceExpressionList(exchange.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(exchange, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(exchange, 1, "Estimated stats :");
-                    optTrace.tracePartitioningScheme(exchange.getPartitioningScheme(), 1, "Partitioning scheme :");
-                    optTrace.traceOrderingScheme(exchange.getOrderingScheme(), 1, "Ordering scheme :");
-                    optTrace.incrIndent(1);
-
-                    optTrace.msg("Inputs :", true);
-                    optTrace.incrIndent(1);
-                    int cnt = 0;
-                    for (List<VariableReferenceExpression> input : exchange.getInputs()) {
-                        optTrace.msg("%d : ", true, cnt);
-                        optTrace.traceVariableReferenceExpressionList(input, 1, null);
-                    }
-                    optTrace.decrIndent(1);
-
-                    optTrace.msg("Scope : %s", true, scope.toString());
-                    optTrace.msg("Ensure source ordering? : %s", true, exchange.isEnsureSourceOrdering());
-                    optTrace.decrIndent(1);
-
-                    int childId = 0;
-                    for (PlanNode child : exchange.getSources()) {
-                        if (checkDepth()) {
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Child %d :", true, childId);
-                            optTrace.incrIndent(1);
-                            incrementDepth();
-                            child.accept(this, optTraceContext);
-                            optTrace.decrIndent(2);
-                            decrementDepth();
-                        }
-                        else {
-                            optTrace.incrIndent(1);
-                            optTrace.msg("Child %d : ...", true, childId);
-                            optTrace.decrIndent(1);
-                        }
-
-                        ++childId;
-                    }
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : exchange.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        private static String formatHash(Optional<VariableReferenceExpression>... hashes)
-        {
-            List<VariableReferenceExpression> variables = stream(hashes)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(toList());
-
-            if (variables.isEmpty()) {
-                return "<empty>";
-            }
-
-            return "[" + Joiner.on(", ").join(variables) + "]";
-        }
-
-        @Override
-        public PlanNode visitJoin(JoinNode join, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer traceId = optTrace.getTraceId(join);
-                    Integer joinId = optTrace.getJoinId(join);
-
-                    List<Expression> joinExpressions = new ArrayList<>();
-                    for (JoinNode.EquiJoinClause clause : join.getCriteria()) {
-                        joinExpressions.add(JoinNodeUtils.toExpression(clause));
-                    }
-
-                    String criteria = Joiner.on(" AND ").join(joinExpressions);
-
-                    Pair<String, String> joinStrings = optTrace.getJoinStrings(join);
-                    requireNonNull(joinStrings, "join strings are null");
-
-                    optTrace.msg(join.getType().getJoinLabel() + " (node id " + join.getId()
-                            + " , join id " + joinId + " , trace id " + traceId + ")", true);
-                    optTrace.traceVariableReferenceExpressionList(join.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(join, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(join, 1, "Estimated stats :");
-
-                    optTrace.incrIndent(1);
-                    optTrace.msg("Join string : " + joinStrings.getKey() + ") , hash code " + joinStrings.getKey().hashCode(), true);
-
-                    optTrace.msg("Constraint : " + joinStrings.getValue() + ")", true);
-
-                    Optional<JoinNode.DistributionType> distType = join.getDistributionType();
-
-                    optTrace.msg("Criteria : %s", true, criteria);
-
-                    if (join.getFilter().isPresent()) {
-                        optTrace.msg("Filter : %s", true, join.getFilter().get().toString());
-                    }
-
-                    if (join.getCriteria() != null && join.getCriteria().size() > 0) {
-                        List<VariableReferenceExpression> leftVariables = join.getCriteria().stream()
-                                .map(JoinNode.EquiJoinClause::getLeft)
-                                .collect(toImmutableList());
-                        List<VariableReferenceExpression> rightVariables = join.getCriteria().stream()
-                                .map(JoinNode.EquiJoinClause::getRight)
-                                .collect(toImmutableList());
-
-                        optTrace.traceVariableReferenceExpressionList(leftVariables, 1, "Left criteria variables :");
-                        optTrace.traceVariableReferenceExpressionList(rightVariables, 1, "Right criteria variables :");
-                    }
-
-                    String formattedHash = formatHash(join.getLeftHashVariable());
-                    optTrace.msg("Left hash var. : %s", true, formattedHash);
-                    formattedHash = formatHash(join.getRightHashVariable());
-                    optTrace.msg("Right hash var. : %s", true, formattedHash);
-                    distType.ifPresent(dist -> optTrace.msg("Distribution type : %s", true, dist.name()));
-
-                    optTrace.decrIndent(1);
-
-                    if (checkDepth()) {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Left input :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        join.getLeft().accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Left input : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    if (checkDepth()) {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Right input :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        join.getRight().accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Right input : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    break;
-                }
-
-                case CNT_JOINS:
-                    ++(optTraceContext.joinCnt);
-                    break;
-
-                case BUILD_JOIN_STRING: {
-                    if (optTraceContext.joinString == null) {
-                        optTraceContext.joinString = new String("(");
-                    }
-                    else {
-                        optTraceContext.joinString = optTraceContext.joinString + "(";
-                    }
-
-                    incrementDepth();
-                    join.getLeft().accept(this, optTraceContext);
-
-                    if (join.isCrossJoin()) {
-                        optTraceContext.joinString = optTraceContext.joinString + " CROSS ";
-                    }
-                    else {
-                        optTraceContext.joinString = optTraceContext.joinString + " " + join.getType() + " ";
-                    }
-
-                    join.getRight().accept(this, optTraceContext);
-                    decrementDepth();
-
-                    Optional<JoinNode.DistributionType> distType = join.getDistributionType();
-
-                    optTraceContext.joinString = optTraceContext.joinString + ")";
-
-                    String distStr = null;
-                    if (distType.isPresent()) {
-                        JoinNode.DistributionType joinDistType = distType.get();
-                        switch (joinDistType) {
-                            case PARTITIONED:
-                                distStr = new String("[P]");
-                                break;
-                            case REPLICATED:
-                                distStr = new String("[R]");
-                                break;
-                            default:
-                                distStr = new String("[?]");
-                                break;
-                        }
-
-                        optTraceContext.joinString = optTraceContext.joinString + " " + distStr;
-                    }
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : join.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitSemiJoin(SemiJoinNode join, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer traceId = optTrace.getTraceId(join);
-                    Integer joinId = optTrace.getJoinId(join);
-
-                    optTrace.msg("SemiJoin (node id " + join.getId() +
-                            " , join id " + traceId + ")", true);
-
-                    optTrace.traceVariableReferenceExpressionList(join.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(join, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(join, 1, "Estimated stats :");
-
-                    Pair<String, String> joinStrings = optTrace.getJoinStrings(join);
-                    requireNonNull(joinStrings, "join strings are null");
-
-                    optTrace.incrIndent(1);
-
-                    optTrace.msg("Join string : " + joinStrings.getKey() + ")", true);
-
-                    optTrace.msg("Constraint : " + joinStrings.getValue() + ")", true);
-
-                    optTrace.msg("Source join var           : %s (%s)", true, join.getSourceJoinVariable().getName(),
-                            join.getSourceJoinVariable().getType().getDisplayName());
-
-                    optTrace.msg("Filtering source join var : %s (%s)", true, join.getFilteringSourceJoinVariable().getName(),
-                            join.getFilteringSourceJoinVariable().getType().getDisplayName());
-
-                    Optional<SemiJoinNode.DistributionType> distType = join.getDistributionType();
-
-                    distType.ifPresent(dist -> optTrace.msg("Distribution type : %s", true, dist.name()));
-
-                    optTrace.decrIndent(1);
-
-                    if (checkDepth()) {
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        optTrace.msg("Probe :", true);
-                        optTrace.incrIndent(1);
-                        join.getProbe().accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Probe : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    if (checkDepth()) {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Build :", true);
-                        optTrace.incrIndent(1);
-                        incrementDepth();
-                        join.getBuild().accept(this, optTraceContext);
-                        optTrace.decrIndent(2);
-                        decrementDepth();
-                    }
-                    else {
-                        optTrace.incrIndent(1);
-                        optTrace.msg("Build : ...", true);
-                        optTrace.decrIndent(1);
-                    }
-
-                    break;
-                }
-
-                case CNT_JOINS:
-                    ++(optTraceContext.joinCnt);
-                    break;
-
-                case BUILD_JOIN_STRING: {
-                    if (optTraceContext.joinString == null) {
-                        optTraceContext.joinString = new String("(");
-                    }
-                    else {
-                        optTraceContext.joinString = optTraceContext.joinString + "(";
-                    }
-
-                    incrementDepth();
-                    join.getProbe().accept(this, optTraceContext);
-                    optTraceContext.joinString = optTraceContext.joinString + " SEMI ";
-                    join.getBuild().accept(this, optTraceContext);
-                    decrementDepth();
-
-                    optTraceContext.joinString = optTraceContext.joinString + ")";
-
-                    break;
-                }
-
-                default: {
-                    for (PlanNode child : join.getSources()) {
-                        incrementDepth();
-                        child.accept(this, optTraceContext);
-                        decrementDepth();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        @Override
-        public PlanNode visitTableScan(TableScanNode tableScan, OptTraceContext optTraceContext)
-        {
-            OptTrace optTrace = optTraceContext.optTrace();
-            ++(optTraceContext.tableCnt);
-
-            switch (optTraceContext.visitType) {
-                case PRINT: {
-                    Integer joinId = optTrace.getJoinId(tableScan);
-
-                    if (joinId == null) {
-                        throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Could not find join id : %s (node id ", tableName(tableScan, optTrace)) +
-                                tableScan.getId() + ")");
-                    }
-
-                    ActualProperties actualProperties = PropertyDerivations.deriveProperties(tableScan, null, optTrace.metadata, optTrace.session,
-                            optTrace.types, optTrace.parser);
-                    optTrace.traceActualProperties(actualProperties, 0, "Actual properties :");
-
-                    if (tableScan.getSourceLocation().isPresent()) {
-                        optTrace.msg(tableScan.getClass().getSimpleName() + " (" + tableName(tableScan, optTrace) + " , " +
-                                sourceLocationToString(tableScan.getSourceLocation().get()) +
-                                " , node id " + tableScan.getId() + " , join id " + joinId + ")", true);
-                    }
-                    else {
-                        optTrace.msg(tableScan.getClass().getSimpleName() + " (" + tableName(tableScan, optTrace) + " , node id "
-                                + tableScan.getId() + " , join id " + joinId + ")", true);
-                    }
-
-                    optTrace.traceVariableReferenceExpressionList(tableScan.getOutputVariables(), 1, "Output variables :");
-                    optTrace.tracePreferredPropertiesForPlanNode(tableScan, 1, "Preferred properties :");
-                    optTrace.tracePlanNodeStatsEstimate(tableScan, 1, "Estimated stats :");
-
-                    if (tableScan.getSourceLocation().isPresent() && tableScan.getSourceLocation().get() != null) {
-                        String locationStr = sourceLocationToString(tableScan.getSourceLocation().get());
-                        optTrace.msg("Location : %s", true, locationStr);
-                    }
-
-                    break;
-                }
-
-                case FIND_TABLES: {
-                    optTraceContext.addTableScan(tableScan);
-                    break;
-                }
-
-                case CNT_TABLES: {
-                    break;
-                }
-
-                case BUILD_JOIN_STRING: {
-                    if (optTraceContext.joinString == null) {
-                        optTraceContext.joinString = new String(tableName(tableScan, optTrace));
-                    }
-                    else {
-                        optTraceContext.joinString = optTraceContext.joinString + tableName(tableScan, optTrace);
-                    }
-                }
-
-                default:
-            }
-
-            return null;
-        }
-    }
-
-    private static String tableName(TableScanNode tableScanNode, OptTrace optTrace)
-    {
-        String str = null;
-
-        if (optTrace != null && optTrace.locationToTableOrAliasNameMap != null &&
-                tableScanNode.getSourceLocation().isPresent()) {
-            String locationString = sourceLocationToString(tableScanNode.getSourceLocation().get());
-
-            if (optTrace.locationToTableOrAliasNameMap.containsKey(locationString)) {
-                List<String> nameOrAliasList = optTrace.locationToTableOrAliasNameMap.get(locationString).stream().collect(toList());
-                checkArgument(nameOrAliasList.size() == 1, format("multiple (or zero) table name/aliases at location %s", locationString));
-
-                str = nameOrAliasList.get(0);
-            }
-        }
-
-        if (str == null) {
-            str = tableScanNode.getTable().getConnectorHandle().toString();
-            String token = new String("tableName=");
-            int startPos = str.indexOf(token);
-            if (startPos != -1) {
-                startPos += token.length();
-                int endPos = str.indexOf(",", startPos);
-
-                if (endPos != -1) {
-                    str = str.substring(startPos, endPos);
-                }
-            }
-        }
-
-        return str;
-    }
-
-    public static void doIndent(BufferedWriter bufferedWriter, int indentCnt)
-    {
-        try {
-            for (int i = 0; i < indentCnt; ++i) {
-                bufferedWriter.write(" ");
-            }
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private String tableName(int groupId)
@@ -3486,6 +2206,1290 @@ public class OptTrace
             catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+    }
+
+    public enum VisitType
+    {
+        NONE, PRINT, FIND_TABLES, BUILD_JOIN_STRING, CNT_TABLES, CNT_JOINS
+    }
+
+    public enum PruneReason
+    {
+        COST("cost"),
+        CONSTRAINT("constraint");
+
+        private String string;
+
+        PruneReason(String stringRep)
+        {
+            this.string = stringRep;
+        }
+
+        public String getString()
+        {
+            return string;
+        }
+    }
+
+    @Immutable
+    public static class Pair<K, V>
+    {
+        private final K key;
+        private final V value;
+
+        @JsonCreator
+        public Pair(@JsonProperty("key") K key, @JsonProperty("value") V value)
+        {
+            this.key = requireNonNull(key, "key is null");
+            this.value = requireNonNull(value, "value is null");
+        }
+
+        @JsonProperty
+        public K getKey()
+        {
+            return key;
+        }
+
+        @JsonProperty
+        public V getValue()
+        {
+            return value;
+        }
+    }
+
+    private static class OptTraceTraversalVisitor
+            extends DefaultTraversalVisitor<RelationPlan, SqlPlannerContext>
+    {
+        private final OptTrace optTrace;
+        private final Analysis analysis;
+
+        OptTraceTraversalVisitor(OptTrace optTraceParam, Analysis analysisParam)
+        {
+            requireNonNull(optTraceParam, "null opt trace");
+            requireNonNull(analysisParam, "null analysis");
+            optTrace = optTraceParam;
+            analysis = analysisParam;
+        }
+
+        @Override
+        public RelationPlan process(Node node, @Nullable SqlPlannerContext context)
+        {
+            return super.process(node, context);
+        }
+
+        @Override
+        protected RelationPlan visitQuery(Query node, SqlPlannerContext context)
+        {
+            // node.getWith().ifPresent(with -> process(with, context));
+
+            process(node.getQueryBody(), context);
+
+            node.getOrderBy().ifPresent(orderBy -> process(orderBy, context));
+
+            return null;
+        }
+
+        @Override
+        protected RelationPlan visitAliasedRelation(AliasedRelation node, SqlPlannerContext context)
+        {
+            requireNonNull(node.getAlias(), "alias is null");
+
+            String aliasName = node.getAlias().getValue();
+            String locationString;
+            if (node.getLocation().isPresent()) {
+                locationString = nodeLocationToString(node.getLocation().get());
+            }
+            else {
+                return null;
+            }
+
+            optTrace.checkForDuplicateTableName(aliasName, locationString, true);
+
+            Relation relation = node.getRelation();
+
+            if (relation instanceof Table) {
+                Table table = (Table) relation;
+                if (table.getName().toString().equals(aliasName)) {
+                    return null;
+                }
+            }
+
+            return process(relation, context);
+        }
+
+        @Override
+        protected RelationPlan visitTable(Table node, SqlPlannerContext context)
+        {
+            Analysis.NamedQuery namedQuery = analysis.getNamedQuery(node);
+
+            if (namedQuery != null) {
+                // Will this impact how CTEs are recorded ?
+                return process(namedQuery.getQuery(), context);
+            }
+
+            String locationString;
+            if (node.getLocation().isPresent()) {
+                locationString = optTrace.nodeLocationToString(node.getLocation().get());
+            }
+            else {
+                return null;
+            }
+
+            optTrace.checkForDuplicateTableName(node.getName().toString(), locationString, false);
+
+            return null;
+        }
+    }
+
+    private static class OptTracePlanVisitor
+            extends InternalPlanVisitor<PlanNode, OptTraceContext>
+    {
+        private int currentDepth;
+        private int maxDepth;
+
+        public OptTracePlanVisitor()
+        {
+            currentDepth = 0;
+            maxDepth = 10000;
+        }
+
+        public OptTracePlanVisitor(int maxDepthParam)
+        {
+            currentDepth = 0;
+            maxDepth = maxDepthParam;
+        }
+
+        private static String formatHash(Optional<VariableReferenceExpression>... hashes)
+        {
+            List<VariableReferenceExpression> variables = stream(hashes)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(toList());
+
+            if (variables.isEmpty()) {
+                return "<empty>";
+            }
+
+            return "[" + Joiner.on(", ").join(variables) + "]";
+        }
+
+        private void incrementDepth()
+        {
+            ++currentDepth;
+        }
+
+        private void decrementDepth()
+        {
+            --currentDepth;
+        }
+
+        private boolean checkDepth()
+        {
+            boolean check;
+            if (maxDepth >= 0 && currentDepth > maxDepth) {
+                check = false;
+            }
+            else {
+                check = true;
+            }
+
+            return check;
+        }
+
+        @Override
+        public PlanNode visitPlan(PlanNode planNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(planNode);
+                    optTrace.msg(planNode.getClass().getSimpleName() + " " + "(node id " + planNode.getId()
+                            + ", join id " + joinId + ")", true);
+
+                    optTrace.traceVariableReferenceExpressionList(planNode.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(planNode, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(planNode, 1, "Estimated stats :");
+
+                    int childId = 0;
+                    for (PlanNode child : planNode.getSources()) {
+                        if (checkDepth()) {
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Child %d :", true, childId);
+                            optTrace.incrIndent(1);
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            optTrace.decrIndent(2);
+                            decrementDepth();
+                        }
+                        else {
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Child %d : ...", true, childId);
+                            optTrace.decrIndent(1);
+                        }
+
+                        ++childId;
+                    }
+
+                    break;
+                }
+
+                case BUILD_JOIN_STRING: {
+                    if (planNode.getSources().size() > 1) {
+                        int childId = 0;
+                        for (PlanNode child : planNode.getSources()) {
+                            if (optTraceContext.joinString == null) {
+                                optTraceContext.joinString = new String();
+                            }
+
+                            if (childId == 0) {
+                                optTraceContext.joinString = optTraceContext.joinString + "(";
+                            }
+                            else {
+                                optTraceContext.joinString = optTraceContext.joinString + " ";
+                            }
+
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            decrementDepth();
+                            ++childId;
+                        }
+
+                        if (childId > 0) {
+                            optTraceContext.joinString = optTraceContext.joinString + ")";
+                        }
+                    }
+                    else if (planNode.getSources().size() == 0) {
+                        Integer traceId = optTrace.getTraceId(planNode);
+                        if (optTraceContext.joinString == null) {
+                            optTraceContext.joinString = new String();
+                        }
+
+                        optTraceContext.joinString = optTraceContext.joinString + format("%s-%s", planNode.getClass().getSimpleName(), traceId);
+                    }
+                    else {
+                        for (PlanNode child : planNode.getSources()) {
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            decrementDepth();
+                        }
+                    }
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : planNode.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitApply(ApplyNode applyNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(applyNode);
+                    optTrace.msg(applyNode.getClass().getSimpleName() + " " + "(node id " + applyNode.getId()
+                            + ", join id " + joinId + ")", true);
+
+                    optTrace.incrIndent(1);
+                    optTrace.msg("May participate in anti-join? : %s", true, applyNode.getMayParticipateInAntiJoin() ? "true" : "false");
+
+                    Assignments subqueryAssignments = applyNode.getSubqueryAssignments();
+                    Map<VariableReferenceExpression, RowExpression> assignmentMap = subqueryAssignments.getMap();
+                    optTrace.msg("Subquery assignments :", true);
+                    optTrace.incrIndent(1);
+                    int cnt = 0;
+                    for (Map.Entry<VariableReferenceExpression, RowExpression> assignmentMapEntry : assignmentMap.entrySet()) {
+                        optTrace.msg("%d : %s => %s", true, cnt, assignmentMapEntry.getKey().getName(),
+                                assignmentMapEntry.getValue().toString());
+                        ++cnt;
+                    }
+                    optTrace.decrIndent(1);
+
+                    String expressionString = Joiner.on(" AND ").join(subqueryAssignments.getExpressions());
+                    optTrace.msg("Expression string : %s", true, expressionString);
+
+                    optTrace.traceVariableReferenceExpressionList(subqueryAssignments.getVariables().stream().collect(toList()), 0, "Assignment output variables :");
+
+                    cnt = 0;
+                    for (RowExpression expression : subqueryAssignments.getExpressions()) {
+                        if (expression instanceof InSubqueryExpression) {
+                            if (cnt == 0) {
+                                optTrace.msg("In subquery expression vars :", true);
+                            }
+
+                            InSubqueryExpression inPredicate = (InSubqueryExpression) expression;
+
+                            VariableReferenceExpression leftVariableReference = inPredicate.getValue();
+                            VariableReferenceExpression rightVariableReference = inPredicate.getSubquery();
+
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Left var  : %s (%s)", true, leftVariableReference.getName(), leftVariableReference.getType().getDisplayName());
+                            optTrace.msg("Right var : %s (%s)", true, rightVariableReference.getName(), rightVariableReference.getType().getDisplayName());
+                            optTrace.decrIndent(1);
+                            ++cnt;
+                        }
+                    }
+
+                    if (applyNode.getCorrelation().size() > 0) {
+                        optTrace.traceVariableReferenceExpressionList(applyNode.getCorrelation(), 1, "Correlations :");
+                    }
+
+                    optTrace.decrIndent(1);
+
+                    optTrace.traceVariableReferenceExpressionList(applyNode.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(applyNode, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(applyNode, 1, "Estimated stats :");
+
+                    if (checkDepth()) {
+                        PlanNode input = applyNode.getInput();
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Input :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        input.accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+
+                        PlanNode subquery = applyNode.getSubquery();
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Subquery :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        subquery.accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Input : ...", true);
+                        optTrace.decrIndent(1);
+
+                        PlanNode subquery = applyNode.getSubquery();
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Subquery : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : applyNode.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitRemoteSource(RemoteSourceNode remoteSourceNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+            List<PlanFragmentId> fragmentIds = remoteSourceNode.getSourceFragmentIds();
+            boolean processed = false;
+
+            switch (optTraceContext.visitType) {
+                case BUILD_JOIN_STRING: {
+                    if (fragmentIds.size() == 1) {
+                        PlanFragmentId planFragmentId = fragmentIds.get(0);
+                        SubPlan subPlan = optTrace.findSubPlan(planFragmentId);
+
+                        if (subPlan != null) {
+                            PlanNode fragmentRootNode = subPlan.getFragment().getRoot();
+
+                            incrementDepth();
+                            fragmentRootNode.accept(this, optTraceContext);
+                            decrementDepth();
+                            processed = true;
+                        }
+                    }
+
+                    break;
+                }
+
+                default:
+                    break;
+            }
+
+            if (!processed) {
+                for (PlanFragmentId planFragmentId : fragmentIds) {
+                    SubPlan subPlan = optTrace.findSubPlan(planFragmentId);
+
+                    if (subPlan != null) {
+                        PlanNode fragmentRootNode = subPlan.getFragment().getRoot();
+                        incrementDepth();
+                        fragmentRootNode.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitGroupReference(GroupReference groupReference, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            requireNonNull(optTrace.lookUp(), "loopUp is null");
+            Stream<PlanNode> planNodes;
+
+            try {
+                planNodes = optTrace.lookUp().resolveGroup(groupReference);
+            }
+            catch (Exception e) {
+                planNodes = null;
+            }
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    int groupId = groupReference.getGroupId();
+
+                    optTrace.msg("Group id " + groupId + " : ", true);
+
+                    if (planNodes != null) {
+                        AtomicInteger count = new AtomicInteger(-1);
+                        planNodes.forEach(member -> {
+                            if (checkDepth()) {
+                                optTrace.incrIndent(1);
+                                optTrace.msg("Member %d :", true, count.incrementAndGet());
+                                optTrace.incrIndent(1);
+                                incrementDepth();
+                                member.accept(this, optTraceContext);
+                                optTrace.decrIndent(2);
+                                decrementDepth();
+                            }
+                            else {
+                                optTrace.incrIndent(1);
+                                optTrace.msg("Member %d : ...", true, count.incrementAndGet());
+                                optTrace.decrIndent(1);
+                            }
+                        });
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("<no members>", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    break;
+                }
+
+                default: {
+                    if (planNodes != null) {
+                        planNodes.forEach(member -> {
+                            incrementDepth();
+                            member.accept(this, optTraceContext);
+                            decrementDepth();
+                        });
+                    }
+
+                    break;
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitAggregation(AggregationNode aggregationNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(aggregationNode);
+                    optTrace.msg("Aggregation (node id " + aggregationNode.getId()
+                            + ", join id " + joinId + ")", true);
+
+                    optTrace.incrIndent(1);
+                    optTrace.traceVariableReferenceExpressionList(aggregationNode.getOutputVariables(), 0, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(aggregationNode, 0, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(aggregationNode, 1, "Estimated stats :");
+
+                    optTrace.msg("Distinct? : %s", true, AggregationNode.isDistinct(aggregationNode) ? "true" : "false");
+
+                    optTrace.traceVariableReferenceExpressionList(aggregationNode.getGroupingKeys(), 0, "Grouping keys :");
+
+                    AggregationNode.GroupingSetDescriptor groupingSets = aggregationNode.getGroupingSets();
+                    if (groupingSets != null) {
+                        optTrace.msg("Grouping set descriptor", true);
+                        optTrace.incrIndent(1);
+                        optTrace.traceVariableReferenceExpressionList(groupingSets.getGroupingKeys(), 1, "Grouping keys :");
+
+                        Set<Integer> globalGroupingSets = groupingSets.getGlobalGroupingSets();
+
+                        if (!globalGroupingSets.isEmpty()) {
+                            optTrace.msg("Global grouping sets :", true);
+                            optTrace.incrIndent(1);
+                            int cnt = 0;
+                            for (Integer globalGroupingSetId : globalGroupingSets) {
+                                optTrace.msg("%d : %d", true, cnt, globalGroupingSetId.intValue());
+                                ++cnt;
+                            }
+                            optTrace.decrIndent(1);
+                        }
+
+                        optTrace.decrIndent(1);
+                    }
+
+                    optTrace.msg("Has default output? : %s", true, aggregationNode.hasDefaultOutput() ? "true" : "false");
+
+                    Map<VariableReferenceExpression, AggregationNode.Aggregation> aggregations = aggregationNode.getAggregations();
+                    if (aggregations != null) {
+                        optTrace.msg("Aggregations :", true);
+                        optTrace.incrIndent(1);
+                        int cnt = 0;
+                        for (Map.Entry<VariableReferenceExpression, AggregationNode.Aggregation> aggregationMapEntry : aggregations.entrySet()) {
+                            AggregationNode.Aggregation aggregation = aggregationMapEntry.getValue();
+
+                            StringBuilder builder = new StringBuilder(format("%d : %s => %s(", cnt, aggregationMapEntry.getKey().getName(),
+                                    aggregation.getCall().getDisplayName()));
+
+                            boolean first = true;
+                            for (RowExpression argument : aggregation.getArguments()) {
+                                if (!first) {
+                                    builder.append(" , ");
+                                }
+
+                                builder.append(format("%s", argument.toString()));
+
+                                first = false;
+                            }
+                            builder.append(")");
+                            optTrace.msg(builder.toString(), true);
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Distinct? : %s", true, aggregation.isDistinct() ? "true" : "false");
+
+                            if (aggregation.getOrderBy().isPresent()) {
+                                optTrace.msg("Ordering ? : %s", true, aggregation.getOrderBy().get());
+                            }
+
+                            if (aggregation.getFilter().isPresent()) {
+                                optTrace.msg("Filter ? : %s", true, aggregation.getFilter().get().toString());
+                            }
+
+                            optTrace.decrIndent(1);
+                            ++cnt;
+                        }
+                        optTrace.decrIndent(1);
+                    }
+
+                    List<VariableReferenceExpression> preGroupedVariables = aggregationNode.getPreGroupedVariables();
+                    optTrace.traceVariableReferenceExpressionList(preGroupedVariables, 1, "Pregrouped variables :");
+
+                    Optional<VariableReferenceExpression> hashVariable = aggregationNode.getHashVariable();
+                    if (hashVariable.isPresent()) {
+                        optTrace.msg("Hash variable ? : %s", true, hashVariable.get().toString());
+                    }
+
+                    Optional<VariableReferenceExpression> groupIdVariable = aggregationNode.getGroupIdVariable();
+                    if (groupIdVariable.isPresent()) {
+                        optTrace.msg("Group id variable ? : %s", true, groupIdVariable.get().toString());
+                    }
+
+                    if (checkDepth()) {
+                        PlanNode child = aggregationNode.getSource();
+                        optTrace.msg("Child :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.msg("Child : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : aggregationNode.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+
+                    break;
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitProject(ProjectNode projectNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(projectNode);
+                    optTrace.msg("Project (node id " + projectNode.getId()
+                            + ", join id " + joinId + ")", true);
+
+                    optTrace.incrIndent(1);
+                    optTrace.traceVariableReferenceExpressionList(projectNode.getOutputVariables(), 0, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(projectNode, 0, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(projectNode, 1, "Estimated stats :");
+
+                    Assignments assignments = projectNode.getAssignments();
+                    Map<VariableReferenceExpression, RowExpression> assignmentMap = assignments.getMap();
+                    optTrace.msg("Assignments :", true);
+                    optTrace.incrIndent(1);
+                    int cnt = 0;
+                    for (Map.Entry<VariableReferenceExpression, RowExpression> assignmentMapEntry : assignmentMap.entrySet()) {
+                        optTrace.msg("%d : %s => %s", true, cnt, assignmentMapEntry.getKey().getName(),
+                                assignmentMapEntry.getValue().toString());
+                        ++cnt;
+                    }
+                    optTrace.decrIndent(1);
+
+                    optTrace.msg("Locality : %s", true, projectNode.getLocality());
+
+                    if (projectNode.getSourceLocation().isPresent() && projectNode.getSourceLocation().get() != null) {
+                        String locationStr = sourceLocationToString(projectNode.getSourceLocation().get());
+                        optTrace.msg("Location : %s", true, locationStr);
+                    }
+
+                    optTrace.decrIndent(1);
+
+                    cnt = 0;
+                    optTrace.incrIndent(1);
+                    for (PlanNode child : projectNode.getSources()) {
+                        if (checkDepth()) {
+                            optTrace.msg("Child %d :", true, cnt);
+                            optTrace.incrIndent(1);
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            optTrace.decrIndent(1);
+                            decrementDepth();
+                        }
+                        else {
+                            optTrace.msg("Child %d : ...", true, cnt);
+                        }
+
+                        ++cnt;
+                    }
+                    optTrace.decrIndent(1);
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : projectNode.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+
+                    break;
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitFilter(FilterNode filterNode, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(filterNode);
+                    optTrace.msg("Filter (node id " + filterNode.getId()
+                            + ", join id " + joinId + ")", true);
+
+                    optTrace.traceVariableReferenceExpressionList(filterNode.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(filterNode, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(filterNode, 1, "Estimated stats :");
+
+                    optTrace.incrIndent(1);
+                    optTrace.msg("Predicate :", true);
+                    optTrace.incrIndent(1);
+                    optTrace.msg(filterNode.getPredicate().toString(), true, null);
+                    optTrace.decrIndent(2);
+
+                    int cnt = 0;
+                    optTrace.incrIndent(1);
+                    for (PlanNode child : filterNode.getSources()) {
+                        if (checkDepth()) {
+                            optTrace.msg("Child %d :", true, cnt);
+                            optTrace.incrIndent(1);
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            optTrace.decrIndent(1);
+                            decrementDepth();
+                        }
+                        else {
+                            optTrace.msg("Child %d : ...", true, cnt);
+                        }
+                        ++cnt;
+                    }
+                    optTrace.decrIndent(1);
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : filterNode.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+
+                    break;
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitExchange(ExchangeNode exchange, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    ExchangeNode.Type type = exchange.getType();
+                    ExchangeNode.Scope scope = exchange.getScope();
+                    PartitioningScheme partitioningScheme = exchange.getPartitioningScheme();
+
+                    optTrace.msg("ExchangeNode[%s] (node id %s)", true, exchange.getType(), exchange.getId());
+                    optTrace.traceVariableReferenceExpressionList(exchange.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(exchange, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(exchange, 1, "Estimated stats :");
+                    optTrace.tracePartitioningScheme(exchange.getPartitioningScheme(), 1, "Partitioning scheme :");
+                    optTrace.traceOrderingScheme(exchange.getOrderingScheme(), 1, "Ordering scheme :");
+                    optTrace.incrIndent(1);
+
+                    optTrace.msg("Inputs :", true);
+                    optTrace.incrIndent(1);
+                    int cnt = 0;
+                    for (List<VariableReferenceExpression> input : exchange.getInputs()) {
+                        optTrace.msg("%d : ", true, cnt);
+                        optTrace.traceVariableReferenceExpressionList(input, 1, null);
+                    }
+                    optTrace.decrIndent(1);
+
+                    optTrace.msg("Scope : %s", true, scope.toString());
+                    optTrace.msg("Ensure source ordering? : %s", true, exchange.isEnsureSourceOrdering());
+                    optTrace.decrIndent(1);
+
+                    int childId = 0;
+                    for (PlanNode child : exchange.getSources()) {
+                        if (checkDepth()) {
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Child %d :", true, childId);
+                            optTrace.incrIndent(1);
+                            incrementDepth();
+                            child.accept(this, optTraceContext);
+                            optTrace.decrIndent(2);
+                            decrementDepth();
+                        }
+                        else {
+                            optTrace.incrIndent(1);
+                            optTrace.msg("Child %d : ...", true, childId);
+                            optTrace.decrIndent(1);
+                        }
+
+                        ++childId;
+                    }
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : exchange.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitJoin(JoinNode join, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer traceId = optTrace.getTraceId(join);
+                    Integer joinId = optTrace.getJoinId(join);
+
+                    List<Expression> joinExpressions = new ArrayList<>();
+                    for (EquiJoinClause clause : join.getCriteria()) {
+                        joinExpressions.add(JoinNodeUtils.toExpression(clause));
+                    }
+
+                    String criteria = Joiner.on(" AND ").join(joinExpressions);
+
+                    Pair<String, String> joinStrings = optTrace.getJoinStrings(join);
+                    requireNonNull(joinStrings, "join strings are null");
+
+                    optTrace.msg(join.getType().getJoinLabel() + " (node id " + join.getId()
+                            + " , join id " + joinId + " , trace id " + traceId + ")", true);
+                    optTrace.traceVariableReferenceExpressionList(join.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(join, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(join, 1, "Estimated stats :");
+
+                    optTrace.incrIndent(1);
+                    optTrace.msg("Join string : " + joinStrings.getKey() + ") , hash code " + joinStrings.getKey().hashCode(), true);
+
+                    optTrace.msg("Constraint : " + joinStrings.getValue() + ")", true);
+
+                    Optional<JoinDistributionType> distType = join.getDistributionType();
+
+                    optTrace.msg("Criteria : %s", true, criteria);
+
+                    if (join.getFilter().isPresent()) {
+                        optTrace.msg("Filter : %s", true, join.getFilter().get().toString());
+                    }
+
+                    if (join.getCriteria() != null && join.getCriteria().size() > 0) {
+                        List<VariableReferenceExpression> leftVariables = join.getCriteria().stream()
+                                .map(EquiJoinClause::getLeft)
+                                .collect(toImmutableList());
+                        List<VariableReferenceExpression> rightVariables = join.getCriteria().stream()
+                                .map(EquiJoinClause::getRight)
+                                .collect(toImmutableList());
+
+                        optTrace.traceVariableReferenceExpressionList(leftVariables, 1, "Left criteria variables :");
+                        optTrace.traceVariableReferenceExpressionList(rightVariables, 1, "Right criteria variables :");
+                    }
+
+                    String formattedHash = formatHash(join.getLeftHashVariable());
+                    optTrace.msg("Left hash var. : %s", true, formattedHash);
+                    formattedHash = formatHash(join.getRightHashVariable());
+                    optTrace.msg("Right hash var. : %s", true, formattedHash);
+                    distType.ifPresent(dist -> optTrace.msg("Distribution type : %s", true, dist.name()));
+
+                    optTrace.decrIndent(1);
+
+                    if (checkDepth()) {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Left input :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        join.getLeft().accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Left input : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    if (checkDepth()) {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Right input :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        join.getRight().accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Right input : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    break;
+                }
+
+                case CNT_JOINS:
+                    ++(optTraceContext.joinCnt);
+                    break;
+
+                case BUILD_JOIN_STRING: {
+                    if (optTraceContext.joinString == null) {
+                        optTraceContext.joinString = new String("(");
+                    }
+                    else {
+                        optTraceContext.joinString = optTraceContext.joinString + "(";
+                    }
+
+                    incrementDepth();
+                    join.getLeft().accept(this, optTraceContext);
+
+                    if (join.isCrossJoin()) {
+                        optTraceContext.joinString = optTraceContext.joinString + " CROSS ";
+                    }
+                    else {
+                        optTraceContext.joinString = optTraceContext.joinString + " " + join.getType() + " ";
+                    }
+
+                    join.getRight().accept(this, optTraceContext);
+                    decrementDepth();
+
+                    Optional<JoinDistributionType> distType = join.getDistributionType();
+
+                    optTraceContext.joinString = optTraceContext.joinString + ")";
+
+                    String distStr = null;
+                    if (distType.isPresent()) {
+                        JoinDistributionType joinDistType = distType.get();
+                        switch (joinDistType) {
+                            case PARTITIONED:
+                                distStr = new String("[P]");
+                                break;
+                            case REPLICATED:
+                                distStr = new String("[R]");
+                                break;
+                            default:
+                                distStr = new String("[?]");
+                                break;
+                        }
+
+                        optTraceContext.joinString = optTraceContext.joinString + " " + distStr;
+                    }
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : join.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitSemiJoin(SemiJoinNode join, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer traceId = optTrace.getTraceId(join);
+                    Integer joinId = optTrace.getJoinId(join);
+
+                    optTrace.msg("SemiJoin (node id " + join.getId() +
+                            " , join id " + traceId + ")", true);
+
+                    optTrace.traceVariableReferenceExpressionList(join.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(join, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(join, 1, "Estimated stats :");
+
+                    Pair<String, String> joinStrings = optTrace.getJoinStrings(join);
+                    requireNonNull(joinStrings, "join strings are null");
+
+                    optTrace.incrIndent(1);
+
+                    optTrace.msg("Join string : " + joinStrings.getKey() + ")", true);
+
+                    optTrace.msg("Constraint : " + joinStrings.getValue() + ")", true);
+
+                    optTrace.msg("Source join var           : %s (%s)", true, join.getSourceJoinVariable().getName(),
+                            join.getSourceJoinVariable().getType().getDisplayName());
+
+                    optTrace.msg("Filtering source join var : %s (%s)", true, join.getFilteringSourceJoinVariable().getName(),
+                            join.getFilteringSourceJoinVariable().getType().getDisplayName());
+
+                    Optional<SemiJoinNode.DistributionType> distType = join.getDistributionType();
+
+                    distType.ifPresent(dist -> optTrace.msg("Distribution type : %s", true, dist.name()));
+
+                    optTrace.decrIndent(1);
+
+                    if (checkDepth()) {
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        optTrace.msg("Probe :", true);
+                        optTrace.incrIndent(1);
+                        join.getProbe().accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Probe : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    if (checkDepth()) {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Build :", true);
+                        optTrace.incrIndent(1);
+                        incrementDepth();
+                        join.getBuild().accept(this, optTraceContext);
+                        optTrace.decrIndent(2);
+                        decrementDepth();
+                    }
+                    else {
+                        optTrace.incrIndent(1);
+                        optTrace.msg("Build : ...", true);
+                        optTrace.decrIndent(1);
+                    }
+
+                    break;
+                }
+
+                case CNT_JOINS:
+                    ++(optTraceContext.joinCnt);
+                    break;
+
+                case BUILD_JOIN_STRING: {
+                    if (optTraceContext.joinString == null) {
+                        optTraceContext.joinString = new String("(");
+                    }
+                    else {
+                        optTraceContext.joinString = optTraceContext.joinString + "(";
+                    }
+
+                    incrementDepth();
+                    join.getProbe().accept(this, optTraceContext);
+                    optTraceContext.joinString = optTraceContext.joinString + " SEMI ";
+                    join.getBuild().accept(this, optTraceContext);
+                    decrementDepth();
+
+                    optTraceContext.joinString = optTraceContext.joinString + ")";
+
+                    break;
+                }
+
+                default: {
+                    for (PlanNode child : join.getSources()) {
+                        incrementDepth();
+                        child.accept(this, optTraceContext);
+                        decrementDepth();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public PlanNode visitTableScan(TableScanNode tableScan, OptTraceContext optTraceContext)
+        {
+            OptTrace optTrace = optTraceContext.optTrace();
+            ++(optTraceContext.tableCnt);
+
+            switch (optTraceContext.visitType) {
+                case PRINT: {
+                    Integer joinId = optTrace.getJoinId(tableScan);
+
+                    if (joinId == null) {
+                        throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Could not find join id : %s (node id ", tableName(tableScan, optTrace)) +
+                                tableScan.getId() + ")");
+                    }
+
+                    ActualProperties actualProperties = PropertyDerivations.deriveProperties(tableScan, null, optTrace.metadata, optTrace.session,
+                            optTrace.types, optTrace.parser);
+                    optTrace.traceActualProperties(actualProperties, 0, "Actual properties :");
+
+                    if (tableScan.getSourceLocation().isPresent()) {
+                        optTrace.msg(tableScan.getClass().getSimpleName() + " (" + tableName(tableScan, optTrace) + " , " +
+                                sourceLocationToString(tableScan.getSourceLocation().get()) +
+                                " , node id " + tableScan.getId() + " , join id " + joinId + ")", true);
+                    }
+                    else {
+                        optTrace.msg(tableScan.getClass().getSimpleName() + " (" + tableName(tableScan, optTrace) + " , node id "
+                                + tableScan.getId() + " , join id " + joinId + ")", true);
+                    }
+
+                    optTrace.traceVariableReferenceExpressionList(tableScan.getOutputVariables(), 1, "Output variables :");
+                    optTrace.tracePreferredPropertiesForPlanNode(tableScan, 1, "Preferred properties :");
+                    optTrace.tracePlanNodeStatsEstimate(tableScan, 1, "Estimated stats :");
+
+                    if (tableScan.getSourceLocation().isPresent() && tableScan.getSourceLocation().get() != null) {
+                        String locationStr = sourceLocationToString(tableScan.getSourceLocation().get());
+                        optTrace.msg("Location : %s", true, locationStr);
+                    }
+
+                    break;
+                }
+
+                case FIND_TABLES: {
+                    optTraceContext.addTableScan(tableScan);
+                    break;
+                }
+
+                case CNT_TABLES: {
+                    break;
+                }
+
+                case BUILD_JOIN_STRING: {
+                    if (optTraceContext.joinString == null) {
+                        optTraceContext.joinString = new String(tableName(tableScan, optTrace));
+                    }
+                    else {
+                        optTraceContext.joinString = optTraceContext.joinString + tableName(tableScan, optTrace);
+                    }
+                }
+
+                default:
+            }
+
+            return null;
+        }
+    }
+
+    private class TableScanComparator
+            implements Comparator<TableScanNode>
+    {
+        public int compare(TableScanNode tableScan1, TableScanNode tableScan2)
+        {
+            String str1 = tableScan1.getTable().getConnectorHandle().toString();
+            String str2 = tableScan2.getTable().getConnectorHandle().toString();
+
+            int cmp = str1.compareTo(str2);
+
+            return cmp;
+        }
+    }
+
+    private class PlanNodeTableScanCntComparator
+            implements Comparator<PlanNode>
+    {
+        private OptTrace optTrace;
+
+        public PlanNodeTableScanCntComparator(OptTrace optTraceParam)
+        {
+            requireNonNull(optTraceParam, "opt trace is null");
+            optTrace = optTraceParam;
+        }
+
+        public int compare(PlanNode planNode1, PlanNode planNode2)
+        {
+            int cnt1 = optTrace.getTableScanCnt(planNode1);
+            int cnt2 = optTrace.getTableScanCnt(planNode2);
+
+            int cmp;
+
+            cmp = cnt1 - cnt2;
+
+            if (cmp == 0) {
+                Integer traceId1 = optTrace.getTraceId(planNode1);
+                Integer traceId2 = optTrace.getTraceId(planNode2);
+
+                cmp = traceId1.intValue() - traceId2.intValue();
+            }
+
+            return cmp;
+        }
+    }
+
+    private class TableScanNameLocationComparator
+            implements Comparator<TableScanNode>
+    {
+        private OptTrace optTrace;
+
+        public TableScanNameLocationComparator(OptTrace optTraceParam)
+        {
+            requireNonNull(optTraceParam, "opt trace is null");
+            optTrace = optTraceParam;
+        }
+
+        public int compare(TableScanNode tableScanNode1, TableScanNode tableScanNode2)
+        {
+            String name1 = tableName(tableScanNode1, optTrace);
+            String name2 = tableName(tableScanNode2, optTrace);
+
+            int cmp = name1.compareTo(name2);
+
+            if (cmp == 0) {
+                if (tableScanNode1.getSourceLocation().isPresent() && tableScanNode2.getSourceLocation().isPresent()) {
+                    name1 = name1 + sourceLocationToString(tableScanNode1.getSourceLocation().get());
+                    name2 = name2 + sourceLocationToString(tableScanNode2.getSourceLocation().get());
+
+                    cmp = name1.compareTo(name2);
+                }
+            }
+
+            return cmp;
+        }
+    }
+
+    private class OptTraceContext
+    {
+        LinkedHashSet<TableScanNode> tableScans;
+        VisitType visitType;
+        String joinString;
+        int tableCnt;
+        int joinCnt;
+        private OptTrace optTrace;
+
+        public OptTraceContext(OptTrace optTraceParam, VisitType visitTypeParam)
+        {
+            requireNonNull(optTraceParam, "trace is null");
+            optTrace = optTraceParam;
+            visitType = visitTypeParam;
+            joinString = null;
+            tableCnt = 0;
+            joinCnt = 0;
+        }
+
+        public void clearTableScans()
+        {
+            if (tableScans != null) {
+                tableScans.clear();
+            }
+        }
+
+        public void clearVisitType()
+        {
+            visitType = null;
+        }
+
+        public void clear()
+        {
+            clearVisitType();
+            clearTableScans();
+            joinString = null;
+            tableCnt = 0;
+        }
+
+        public OptTrace optTrace()
+        {
+            return optTrace;
+        }
+
+        public void addTableScan(TableScanNode tableScanNode)
+        {
+            if (tableScans == null) {
+                tableScans = new LinkedHashSet<TableScanNode>();
+            }
+
+            tableScans.add(tableScanNode);
+        }
+
+        LinkedHashSet<TableScanNode> tableScans()
+        {
+            return tableScans;
         }
     }
 }
