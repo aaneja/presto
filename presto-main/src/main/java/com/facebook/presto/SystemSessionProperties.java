@@ -343,6 +343,7 @@ public final class SystemSessionProperties
     private static final String NATIVE_EXECUTION_EXECUTABLE_PATH = "native_execution_executable_path";
     private static final String NATIVE_EXECUTION_PROGRAM_ARGUMENTS = "native_execution_program_arguments";
     public static final String NATIVE_EXECUTION_PROCESS_REUSE_ENABLED = "native_execution_process_reuse_enabled";
+    public static final String ENABLE_OPTIMIZER_TRACE = "enable_optimizer_trace";
     public static final String NATIVE_DEBUG_VALIDATE_OUTPUT_FROM_OPERATORS = "native_debug_validate_output_from_operators";
     public static final String DEFAULT_VIEW_SECURITY_MODE = "default_view_security_mode";
     public static final String OPTIMIZER_USE_HISTOGRAMS = "optimizer_use_histograms";
@@ -1925,6 +1926,11 @@ public final class SystemSessionProperties
                 booleanProperty(OPTIMIZER_USE_HISTOGRAMS,
                         "whether or not to use histograms in the CBO",
                         featuresConfig.isUseHistograms(),
+                        false),
+                booleanProperty(
+                        ENABLE_OPTIMIZER_TRACE,
+                        "Enable optimizer tracing",
+                        featuresConfig.isEnableOptimizerTrace(),
                         false));
     }
 
@@ -3211,5 +3217,10 @@ public final class SystemSessionProperties
     public static boolean shouldOptimizerUseHistograms(Session session)
     {
         return session.getSystemProperty(OPTIMIZER_USE_HISTOGRAMS, Boolean.class);
+    }
+
+    public static boolean isEnableOptimizerTrace(Session session)
+    {
+        return session.getSystemProperty(ENABLE_OPTIMIZER_TRACE, Boolean.class);
     }
 }
