@@ -37,6 +37,7 @@ import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.planner.CanonicalJoinNode;
+import com.facebook.presto.sql.planner.Constraint;
 import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
@@ -79,6 +80,7 @@ import static com.facebook.presto.spi.plan.JoinType.INNER;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.LOCAL;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.AUTOMATIC;
 import static com.facebook.presto.sql.planner.EqualityInference.createEqualityInference;
+import static com.facebook.presto.sql.planner.JoinConstraintNode2.matches;
 import static com.facebook.presto.sql.planner.PlannerUtils.addProjections;
 import static com.facebook.presto.sql.planner.VariablesExtractor.extractUnique;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isBelowMaxBroadcastSize;
@@ -203,6 +205,7 @@ public class ReorderJoins
 
         private final Map<Set<PlanNode>, JoinEnumerationResult> memo = new HashMap<>();
         private final FunctionResolution functionResolution;
+        private final List<Constraint> planConstraints;
 
         @VisibleForTesting
         JoinEnumerator(CostComparator costComparator, RowExpression filter, Context context, DeterminismEvaluator determinismEvaluator, FunctionResolution functionResolution, Metadata metadata)
@@ -219,6 +222,7 @@ public class ReorderJoins
             this.allFilterInference = createEqualityInference(metadata, filter);
             this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, functionResolution, metadata.getFunctionAndTypeManager());
             this.functionResolution = functionResolution;
+            this.planConstraints = context.getPlanConstraints();
         }
 
         private JoinEnumerationResult chooseJoinOrder(LinkedHashSet<PlanNode> sources, List<VariableReferenceExpression> outputVariables)
@@ -325,11 +329,18 @@ public class ReorderJoins
                     requiredJoinVariables.stream()
                             .filter(leftVariables::contains)
                             .collect(toImmutableList()));
-            if (leftResult.equals(UNKNOWN_COST_RESULT)) {
-                return UNKNOWN_COST_RESULT;
+
+            if (leftResult.getPlanNode().isPresent() &&
+                    planConstraints.stream().anyMatch(p -> matches(p, leftResult.getPlanNode().get()))) {
+                log.info("Chose a leftResult because of a matching plan constraint");
             }
-            if (leftResult.equals(INFINITE_COST_RESULT)) {
-                return INFINITE_COST_RESULT;
+            else {
+                if (leftResult.equals(UNKNOWN_COST_RESULT)) {
+                    return UNKNOWN_COST_RESULT;
+                }
+                if (leftResult.equals(INFINITE_COST_RESULT)) {
+                    return INFINITE_COST_RESULT;
+                }
             }
 
             PlanNode left = leftResult.planNode.orElseThrow(() -> new VerifyException("Plan node is not present"));
@@ -346,11 +357,18 @@ public class ReorderJoins
                     requiredJoinVariables.stream()
                             .filter(rightVariables::contains)
                             .collect(toImmutableList()));
-            if (rightResult.equals(UNKNOWN_COST_RESULT)) {
-                return UNKNOWN_COST_RESULT;
+
+            if (rightResult.getPlanNode().isPresent() &&
+                    planConstraints.stream().anyMatch(p -> matches(p, rightResult.getPlanNode().get()))) {
+                log.info("Chose a rightResult because of a matching plan constraint");
             }
-            if (rightResult.equals(INFINITE_COST_RESULT)) {
-                return INFINITE_COST_RESULT;
+            else {
+                if (rightResult.equals(UNKNOWN_COST_RESULT)) {
+                    return UNKNOWN_COST_RESULT;
+                }
+                if (rightResult.equals(INFINITE_COST_RESULT)) {
+                    return INFINITE_COST_RESULT;
+                }
             }
 
             PlanNode right = rightResult.planNode.orElseThrow(() -> new VerifyException("Plan node is not present"));
@@ -548,6 +566,15 @@ public class ReorderJoins
         private List<JoinEnumerationResult> getPossibleJoinNodes(JoinNode joinNode, JoinDistributionType distributionType)
         {
             checkArgument(joinNode.getType() == INNER, "unexpected join node type: %s", joinNode.getType());
+
+            if (joinNode.getCriteria().isEmpty() && joinNode.getType() == INNER) {
+                boolean joinOk = planConstraints.stream().anyMatch(p-> matches(p, joinNode));
+
+                if (!joinOk) {
+                    log.info("No join conditions or matching constraint. Join cost is infinite.");
+                    return ImmutableList.of(INFINITE_COST_RESULT);
+                }
+            }
 
             if (joinNode.isCrossJoin()) {
                 return getPossibleJoinNodes(joinNode, REPLICATED);

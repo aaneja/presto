@@ -23,7 +23,11 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.LogicalPropertiesProvider;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.sql.planner.Constraint;
+import com.facebook.presto.sql.planner.JoinConstraintNode2;
+import com.google.common.collect.ImmutableList;
 
+import java.util.List;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
@@ -70,6 +74,10 @@ public interface Rule<T>
         WarningCollector getWarningCollector();
 
         Optional<LogicalPropertiesProvider> getLogicalPropertiesProvider();
+
+        default List<Constraint> getPlanConstraints() {
+            return ImmutableList.of();
+        }
     }
 
     final class Result
