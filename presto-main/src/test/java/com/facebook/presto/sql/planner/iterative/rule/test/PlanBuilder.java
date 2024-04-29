@@ -761,6 +761,19 @@ public class PlanBuilder
             return new ExchangeNode(Optional.empty(), idAllocator.getNextId(), type, scope, partitioningScheme, sources, inputs, ensureSourceOrdering, Optional.ofNullable(orderingScheme));
         }
     }
+    public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, JoinDistributionType joinDistributionType)
+    {
+        return join(joinType,
+                left,
+                right,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(joinDistributionType),
+                ImmutableMap.of());
+    }
 
     public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, EquiJoinClause... criteria)
     {
