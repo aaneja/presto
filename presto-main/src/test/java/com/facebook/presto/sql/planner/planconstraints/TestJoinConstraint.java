@@ -19,6 +19,7 @@ import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
@@ -40,6 +41,7 @@ public class TestJoinConstraint
     private Metadata metadata;
     private Session session;
     private PlanNodeIdAllocator idAllocator;
+    private final Lookup lookup = Lookup.noLookup();
 
     public TestJoinConstraint()
     {
@@ -82,21 +84,21 @@ public class TestJoinConstraint
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertTrue(matches(constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare));
 
         // Flipped order does not match
         constraint = new JoinConstraint(INNER,
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesB"), new RelationConstraint("valuesA")));
 
-        assertFalse(matches(constraint, toCompare));
+        assertFalse(matches(lookup, constraint, toCompare));
 
         // Distribution Type must match that of the constraint
         constraint = new JoinConstraint(INNER,
                 Optional.of(REPLICATED),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertFalse(matches(constraint, toCompare));
+        assertFalse(matches(lookup, constraint, toCompare));
 
         toCompare = p.join(
                 INNER,
@@ -104,7 +106,7 @@ public class TestJoinConstraint
                 p.values(new PlanNodeId("valuesB")),
                 REPLICATED);
 
-        assertTrue(matches(constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare));
     }
 
     @Test
@@ -131,7 +133,7 @@ public class TestJoinConstraint
                         new JoinConstraint(INNER,
                                 Optional.empty(),
                                 ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
-        assertTrue(matches(constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare));
     }
 
     @Test
@@ -158,6 +160,6 @@ public class TestJoinConstraint
                         new JoinConstraint(INNER,
                                 Optional.empty(),
                                 ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
-        assertTrue(matches(constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare));
     }
 }
