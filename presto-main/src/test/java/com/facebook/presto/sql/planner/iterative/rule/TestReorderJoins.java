@@ -28,6 +28,8 @@ import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleAssert;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.planconstraints.JoinConstraint;
+import com.facebook.presto.sql.planner.planconstraints.RelationConstraint;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.google.common.collect.ImmutableList;
@@ -704,6 +706,25 @@ public class TestReorderJoins
                                                                         tableScan("supplier", ImmutableMap.of("S_ACCTBAL", "acctbal", "S_SUPPKEY", "suppkey")))))),
                                         anyTree(
                                                 tableScan("part", ImmutableMap.of("P_PARTKEY", "partkey")))))));
+    }
+
+    @Test
+    public void testJoinOrderForcedAsPerPlanConstraint()
+    {
+        JoinConstraint constraint = new JoinConstraint(INNER,
+                Optional.empty(),
+                ImmutableList.of(new RelationConstraint("orders"), new RelationConstraint("lineitem")));
+
+        Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+
+        assertPlan("select 1 from lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+                anyTree(
+                        join(INNER,
+                                ImmutableList.of(equiJoinClause("O_ORDERKEY", "L_ORDERKEY")),
+                                anyTree(
+                                        tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))),
+                                anyTree(
+                                        tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))))));
     }
 
     @Test

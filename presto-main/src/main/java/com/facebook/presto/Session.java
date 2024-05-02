@@ -446,7 +446,7 @@ public final class Session
                 tracer,
                 warningCollector,
                 runtimeStats,
-                ImmutableList.of());
+                planConstraints);
     }
 
     public Session withDefaultProperties(
@@ -826,7 +826,10 @@ public final class Session
 
         public SessionBuilder addPlanConstraints(List<PlanConstraint> planConstraints)
         {
-            this.planConstraints.addAll(planConstraints);
+            ImmutableList.Builder<PlanConstraint> builder = ImmutableList.builder();
+            builder.addAll(this.planConstraints);
+            builder.addAll(planConstraints);
+            this.planConstraints = builder.build();
             return this;
         }
 

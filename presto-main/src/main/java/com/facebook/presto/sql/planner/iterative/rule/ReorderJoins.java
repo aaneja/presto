@@ -331,7 +331,7 @@ public class ReorderJoins
                             .collect(toImmutableList()));
 
             if (leftResult.getPlanNode().isPresent() &&
-                    planConstraints.stream().anyMatch(p -> matches(p, leftResult.getPlanNode().get()))) {
+                    planConstraints.stream().anyMatch(p -> matches(context.getLookup(), p, leftResult.getPlanNode().get()))) {
                 log.info("Chose a leftResult because of a matching plan constraint");
             }
             else {
@@ -359,7 +359,7 @@ public class ReorderJoins
                             .collect(toImmutableList()));
 
             if (rightResult.getPlanNode().isPresent() &&
-                    planConstraints.stream().anyMatch(p -> matches(p, rightResult.getPlanNode().get()))) {
+                    planConstraints.stream().anyMatch(p -> matches(context.getLookup(), p, rightResult.getPlanNode().get()))) {
                 log.info("Chose a rightResult because of a matching plan constraint");
             }
             else {
@@ -550,17 +550,41 @@ public class ReorderJoins
         {
             // TODO avoid stat (but not cost) recalculation for all considered (distribution,flip) pairs, since resulting relation is the same in all case
             if (isAtMostScalar(joinNode.getRight(), lookup)) {
+                if (!ensureMatchesConstraints(joinNode)) {
+                    return INFINITE_COST_RESULT;
+                }
                 return createJoinEnumerationResult(joinNode.withDistributionType(REPLICATED));
             }
             if (isAtMostScalar(joinNode.getLeft(), lookup)) {
+                if (!ensureMatchesConstraints(joinNode)) {
+                    return INFINITE_COST_RESULT;
+                }
                 return createJoinEnumerationResult(joinNode.flipChildren().withDistributionType(REPLICATED));
             }
             List<JoinEnumerationResult> possibleJoinNodes = getPossibleJoinNodes(joinNode, getJoinDistributionType(session));
             verify(!possibleJoinNodes.isEmpty(), "possibleJoinNodes is empty");
+
+            if (!planConstraints.isEmpty()) {
+                int candidateJoinNodes = possibleJoinNodes.size();
+                possibleJoinNodes = possibleJoinNodes.stream().filter(r->  {
+                    if (!r.getPlanNode().isPresent()) {
+                        return true;
+                    }
+                    return ensureMatchesConstraints(r.getPlanNode().get());
+                }).collect(toImmutableList());
+
+                log.info("Possible join nodes with replicated/flips : Before [%d], After [%d]", candidateJoinNodes, possibleJoinNodes.size());
+            }
+
             if (possibleJoinNodes.stream().anyMatch(UNKNOWN_COST_RESULT::equals)) {
                 return UNKNOWN_COST_RESULT;
             }
             return resultComparator.min(possibleJoinNodes);
+        }
+
+        private boolean ensureMatchesConstraints(PlanNode joinNode)
+        {
+            return planConstraints.stream().anyMatch(p -> matches(lookup, p, joinNode));
         }
 
         private List<JoinEnumerationResult> getPossibleJoinNodes(JoinNode joinNode, JoinDistributionType distributionType)
@@ -568,7 +592,7 @@ public class ReorderJoins
             checkArgument(joinNode.getType() == INNER, "unexpected join node type: %s", joinNode.getType());
 
             if (joinNode.getCriteria().isEmpty() && joinNode.getType() == INNER) {
-                boolean joinOk = planConstraints.stream().anyMatch(p-> matches(p, joinNode));
+                boolean joinOk = planConstraints.stream().anyMatch(p-> matches(context.getLookup(), p, joinNode));
 
                 if (!joinOk) {
                     log.info("No join conditions or matching constraint. Join cost is infinite.");

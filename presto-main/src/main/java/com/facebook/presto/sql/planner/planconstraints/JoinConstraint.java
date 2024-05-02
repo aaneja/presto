@@ -21,6 +21,9 @@ import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.JoinType;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
+import com.facebook.presto.spi.plan.TableScanNode;
+import com.facebook.presto.sql.planner.iterative.GroupReference;
+import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 
@@ -45,39 +48,54 @@ public class JoinConstraint
         this.children = children;
     }
 
-    public static boolean matches(PlanConstraint constraint, PlanNode toCompare)
+    public static boolean matches(Lookup lookup, PlanConstraint constraint, PlanNode toCompare)
     {
+        if (toCompare instanceof GroupReference) {
+            toCompare = lookup.resolve(toCompare);
+        }
+
         if (constraint instanceof JoinConstraint) {
+            JoinConstraint joinConstraint = (JoinConstraint) constraint;
             if (toCompare instanceof JoinNode) {
                 JoinNode toMatch = (JoinNode) toCompare;
-                JoinConstraint joinConstraint = (JoinConstraint) constraint;
                 if (toMatch.getType() != joinConstraint.getJoinType() ||
                         (joinConstraint.getDistributionType().isPresent() && !toMatch.getDistributionType().isPresent()) ||
                         (joinConstraint.getDistributionType().isPresent() && joinConstraint.getDistributionType().get() != toMatch.getDistributionType().get())) {
                     return false;
                 }
                 // Current JoinNode matches, check the children
-                return matches(joinConstraint.getChildren().get(0), toMatch.getLeft()) &&
-                        matches(joinConstraint.getChildren().get(1), toMatch.getRight());
+                return matches(lookup, joinConstraint.getChildren().get(0), toMatch.getLeft()) &&
+                        matches(lookup, joinConstraint.getChildren().get(1), toMatch.getRight());
             }
 
             // The current node, could be a Projection introduced during join reordering
             if (toCompare instanceof ProjectNode) {
-                return matches(constraint, ((ProjectNode) toCompare).getSource());
+                return matches(lookup, constraint, ((ProjectNode) toCompare).getSource());
             }
 
-            // The current node is a leaf node, so it does not match the Join constraint
-            return false;
+            // The current node does not match as-is, check the children for a sub-graph match
+            return matches(lookup, joinConstraint.getChildren().get(0), toCompare) ||
+                    matches(lookup, joinConstraint.getChildren().get(1), toCompare);
         }
         else if (constraint instanceof RelationConstraint) {
+            RelationConstraint relationConstraint = (RelationConstraint) constraint;
             if (toCompare instanceof JoinNode) {
                 // Expected a terminating leaf node
                 return false;
             }
             // TODO : We need a canonical property that can identify the 'named' relation at this point, for now we assume a match
-            LOG.info("Found a node %s", toCompare.getId());
-            // Assuming id is that property for now
-            return ((RelationConstraint) constraint).getName().equalsIgnoreCase(toCompare.getId().toString());
+
+            if (toCompare instanceof TableScanNode) {
+                TableScanNode tableScanNode = (TableScanNode) toCompare;
+                String tableHandle = tableScanNode.getTable().getConnectorHandle().toString();
+                LOG.info("Found a table with handle : %s", tableHandle);
+                return tableHandle.contains(relationConstraint.getName());
+            }
+            else {
+                // Assuming id is that property for now
+                LOG.info("Found a node %s", toCompare.getId());
+                return relationConstraint.getName().equalsIgnoreCase(toCompare.getId().toString());
+            }
         }
         return false;
     }
