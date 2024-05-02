@@ -15,6 +15,7 @@ package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
@@ -29,6 +30,7 @@ import java.util.Optional;
 
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
+import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -58,9 +60,9 @@ public class TestJoinConstraint
 //    public void testBuildJoinConstraint()
 //            throws IOException
 //    {
-//        ArrayList<JoinConstraintNode> joinConstraints = new ArrayList<>();
-//        JoinConstraintNode.parse("JOIN(((t4 t3) t2) t1) CARD(t1 1000000) JOIN(((t4 t3) [P]) t2) [P] t1) [R]", joinConstraints);
-//        for (JoinConstraintNode joinConstraint : joinConstraints) {
+//        ArrayList<JoinConstraint> joinConstraints = new ArrayList<>();
+//        JoinConstraint.parse("JOIN(((t4 t3) t2) t1) CARD(t1 1000000) JOIN(((t4 t3) [P]) t2) [P] t1) [R]", joinConstraints);
+//        for (JoinConstraint joinConstraint : joinConstraints) {
 //            System.out.println(joinConstraint.baseIdSet());
 //        }
 //
@@ -68,7 +70,7 @@ public class TestJoinConstraint
 //    }
 
     @Test
-    public void testSmokeJoinConstraintNode2()
+    public void testSmokeJoinConstraint()
     {
         PlanBuilder p = new PlanBuilder(session, idAllocator, metadata);
         PlanNode toCompare = p.join(
@@ -80,21 +82,21 @@ public class TestJoinConstraint
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertTrue(JoinConstraint.matches(constraint, toCompare));
+        assertTrue(matches(constraint, toCompare));
 
         // Flipped order does not match
         constraint = new JoinConstraint(INNER,
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesB"), new RelationConstraint("valuesA")));
 
-        assertFalse(JoinConstraint.matches(constraint, toCompare));
+        assertFalse(matches(constraint, toCompare));
 
         // Distribution Type must match that of the constraint
         constraint = new JoinConstraint(INNER,
                 Optional.of(REPLICATED),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertFalse(JoinConstraint.matches(constraint, toCompare));
+        assertFalse(matches(constraint, toCompare));
 
         toCompare = p.join(
                 INNER,
@@ -102,7 +104,7 @@ public class TestJoinConstraint
                 p.values(new PlanNodeId("valuesB")),
                 REPLICATED);
 
-        assertTrue(JoinConstraint.matches(constraint, toCompare));
+        assertTrue(matches(constraint, toCompare));
     }
 
     @Test
@@ -129,6 +131,33 @@ public class TestJoinConstraint
                         new JoinConstraint(INNER,
                                 Optional.empty(),
                                 ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
-        assertTrue(JoinConstraint.matches(constraint, toCompare));
+        assertTrue(matches(constraint, toCompare));
+    }
+
+    @Test
+    public void testProjectNotConsideredALeafNode()
+    {
+        PlanBuilder p = new PlanBuilder(session, idAllocator, metadata);
+        PlanNode toCompare = p.join(
+                INNER,
+                p.join(
+                        INNER,
+                        p.values(new PlanNodeId("valuesA")),
+                        p.values(new PlanNodeId("valuesB"))),
+                p.project(Assignments.of(), p.join(
+                        INNER,
+                        p.values(new PlanNodeId("valuesC")),
+                        p.values(new PlanNodeId("valuesD")))));
+
+        JoinConstraint constraint = new JoinConstraint(INNER,
+                Optional.empty(),
+                ImmutableList.of(
+                        new JoinConstraint(INNER,
+                                Optional.empty(),
+                                ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB"))),
+                        new JoinConstraint(INNER,
+                                Optional.empty(),
+                                ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
+        assertTrue(matches(constraint, toCompare));
     }
 }
