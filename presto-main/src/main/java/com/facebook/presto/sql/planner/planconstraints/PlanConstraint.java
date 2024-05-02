@@ -11,16 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.server;
+package com.facebook.presto.sql.planner.planconstraints;
 
-import com.facebook.presto.Session;
-import com.facebook.presto.execution.warnings.WarningCollectorFactory;
-import com.facebook.presto.spi.QueryId;
-import com.facebook.presto.spi.security.AuthorizedIdentity;
+import com.facebook.drift.annotations.ThriftStruct;
 
-import java.util.Optional;
-
-public interface SessionSupplier
+@ThriftStruct
+public abstract class PlanConstraint
 {
-    Session createSession(QueryId queryId, Optional<String> query, SessionContext context, WarningCollectorFactory warningCollectorFactory, Optional<AuthorizedIdentity> authorizedIdentity);
+    public  PlanConstraint() {}
+    boolean isLeaf()
+    {
+        return true;
+    }
 }
