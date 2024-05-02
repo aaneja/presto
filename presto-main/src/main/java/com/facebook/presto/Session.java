@@ -38,7 +38,9 @@ import com.facebook.presto.spi.tracing.Tracer;
 import com.facebook.presto.sql.analyzer.CTEInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerResultCollector;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.facebook.presto.transaction.TransactionManager;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
@@ -46,7 +48,9 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -105,6 +109,9 @@ public final class Session
     private final Map<PlanNodeId, PlanNodeStatsEstimate> planNodeStatsMap = new HashMap<>();
     private final Map<PlanNodeId, PlanCostEstimate> planNodeCostMap = new HashMap<>();
 
+    //VIVEK TODO - make this immutable?
+    private final List<PlanConstraint> planConstraints;
+
     public Session(
             QueryId queryId,
             Optional<TransactionId> transactionId,
@@ -130,7 +137,8 @@ public final class Session
             Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions,
             Optional<Tracer> tracer,
             WarningCollector warningCollector,
-            RuntimeStats runtimeStats)
+            RuntimeStats runtimeStats,
+            List<PlanConstraint> planConstraints)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.transactionId = requireNonNull(transactionId, "transactionId is null");
@@ -172,6 +180,7 @@ public final class Session
         this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
         this.runtimeStats = requireNonNull(runtimeStats, "runtimeStats is null");
         this.context = new AccessControlContext(queryId, clientInfo, clientTags, source, warningCollector, runtimeStats);
+        this.planConstraints = requireNonNull(planConstraints, "planConstraints is null");
     }
 
     public QueryId getQueryId()
@@ -352,6 +361,11 @@ public final class Session
         return planNodeCostMap;
     }
 
+    public List<PlanConstraint> getPlanConstraints()
+    {
+        return planConstraints;
+    }
+
     public Session beginTransactionId(TransactionId transactionId, TransactionManager transactionManager, AccessControl accessControl)
     {
         requireNonNull(transactionId, "transactionId is null");
@@ -446,7 +460,8 @@ public final class Session
                 sessionFunctions,
                 tracer,
                 warningCollector,
-                runtimeStats);
+                runtimeStats,
+                ImmutableList.of());
     }
 
     public Session withDefaultProperties(
@@ -502,7 +517,8 @@ public final class Session
                 sessionFunctions,
                 tracer,
                 warningCollector,
-                runtimeStats);
+                runtimeStats,
+                ImmutableList.of());
     }
 
     public ConnectorSession toConnectorSession()
@@ -566,7 +582,8 @@ public final class Session
                 unprocessedCatalogProperties,
                 identity.getRoles(),
                 preparedStatements,
-                sessionFunctions);
+                sessionFunctions,
+                planConstraints);
     }
 
     @Override
@@ -589,6 +606,7 @@ public final class Session
                 .add("clientTags", clientTags)
                 .add("resourceEstimates", resourceEstimates)
                 .add("startTime", startTime)
+                .add("planConstraints", planConstraints)
                 .omitNullValues()
                 .toString();
     }
@@ -630,6 +648,7 @@ public final class Session
         private final Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions = new HashMap<>();
         private WarningCollector warningCollector = WarningCollector.NOOP;
         private RuntimeStats runtimeStats = new RuntimeStats();
+        private List<PlanConstraint> planConstraints = new ArrayList<>();
 
         private SessionBuilder(SessionPropertyManager sessionPropertyManager)
         {
@@ -663,6 +682,7 @@ public final class Session
             this.tracer = requireNonNull(session.tracer, "tracer is null");
             this.warningCollector = requireNonNull(session.warningCollector, "warningCollector is null");
             this.runtimeStats = requireNonNull(session.runtimeStats, "runtimeStats is null");
+            this.planConstraints = requireNonNull(session.planConstraints, "planConstraints is null");
         }
 
         public SessionBuilder setQueryId(QueryId queryId)
@@ -819,6 +839,12 @@ public final class Session
             return this;
         }
 
+        public SessionBuilder addPlanConstraints(List<PlanConstraint> planConstraints)
+        {
+            this.planConstraints.addAll(planConstraints);
+            return this;
+        }
+
         public <T> T getSystemProperty(String name, Class<T> type)
         {
             return sessionPropertyManager.decodeSystemPropertyValue(name, systemProperties.get(name), type);
@@ -851,7 +877,8 @@ public final class Session
                     sessionFunctions,
                     tracer,
                     warningCollector,
-                    runtimeStats);
+                    runtimeStats,
+                    planConstraints);
         }
     }
 

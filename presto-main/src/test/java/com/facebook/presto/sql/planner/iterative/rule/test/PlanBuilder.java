@@ -762,6 +762,20 @@ public class PlanBuilder
         }
     }
 
+    public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, JoinDistributionType joinDistributionType)
+    {
+        return join(joinType,
+                left,
+                right,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(joinDistributionType),
+                ImmutableMap.of());
+    }
+
     public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, EquiJoinClause... criteria)
     {
         return join(joinType, left, right, Optional.empty(), criteria);
