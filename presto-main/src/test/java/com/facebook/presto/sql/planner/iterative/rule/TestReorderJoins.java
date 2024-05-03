@@ -907,20 +907,101 @@ public class TestReorderJoins
     @Test
     public void testJoinOrderForcedAsPerPlanConstraint()
     {
-        JoinConstraint constraint = new JoinConstraint(INNER,
-                Optional.empty(),
-                ImmutableList.of(new RelationConstraint("orders"), new RelationConstraint("lineitem")));
+        {
+            // Force a poor REPLICATED join with a larger build side
+            JoinConstraint constraint = new JoinConstraint(INNER,
+                    Optional.of(REPLICATED),
+                    ImmutableList.of(new RelationConstraint("orders"), new RelationConstraint("lineitem")));
 
-        Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
 
-        assertPlan("select 1 from lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
-                anyTree(
-                        join(INNER,
-                                ImmutableList.of(equiJoinClause("O_ORDERKEY", "L_ORDERKEY")),
-                                anyTree(
-                                        tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))),
-                                anyTree(
-                                        tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))))));
+            assertPlan("select 1 from lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+                    anyTree(
+                            join(INNER,
+                                    ImmutableList.of(equiJoinClause("O_ORDERKEY", "L_ORDERKEY")),
+                                    Optional.empty(),
+                                    Optional.of(REPLICATED),
+                                    anyTree(
+                                            tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))),
+                                    anyTree(
+                                            tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))))));
+        }
+        {
+            JoinConstraint constraint = new JoinConstraint(INNER,
+                    Optional.empty(),
+                    ImmutableList.of(
+                            new JoinConstraint(INNER,
+                                    Optional.empty(),
+                                    ImmutableList.of(new RelationConstraint("supplier"), new RelationConstraint("part"))),
+                            new JoinConstraint(INNER,
+                                    Optional.empty(),
+                                    ImmutableList.of(new RelationConstraint("partsupp"), new RelationConstraint("customer")))));
+
+            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+
+            // Force a 4-table JOIN that includes 2 CrossJoins for a fully connected join graph
+            assertPlan("select 1 from supplier s, partsupp ps, customer c, part p where s.suppkey = ps.suppkey and ps.partkey = p.partkey and s.nationkey = c.nationkey",
+                    constrainedSession,
+                    anyTree(
+                            join(
+                                    anyTree(
+                                            join(tableScan("supplier"),
+                                                    anyTree(
+                                                            tableScan("part")))),
+                                    anyTree(
+                                            join(tableScan("partsupp"),
+                                                    anyTree(
+                                                            tableScan("customer")))))));
+        }
+
+        {
+            // As such, the (lineitem IJ orders) join is ignored by ReorderJoins, forcing the plan via a constraint works
+            JoinConstraint constraint = new JoinConstraint(
+                    INNER,
+                    Optional.empty(),
+                    ImmutableList.of(
+                            new RelationConstraint("supplier"),
+                            new JoinConstraint(INNER,
+                                    Optional.empty(),
+                                    ImmutableList.of(new RelationConstraint("lineitem"), new RelationConstraint("orders")))));
+
+            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+
+            assertPlan("select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+                    anyTree(
+                            join(INNER,
+                                    ImmutableList.of(),
+                                    tableScan("supplier"),
+                                    anyTree(
+                                            join(INNER,
+                                                    ImmutableList.of(equiJoinClause("L_ORDERKEY", "O_ORDERKEY")),
+                                                    anyTree(
+                                                            tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))),
+                                                    anyTree(
+                                                            tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
+        }
+
+        // {
+        //     // If we only specify the (lineitem IJ orders) we don't get a fully constrained plan
+        //     JoinConstraint constraint = new JoinConstraint(INNER,
+        //             Optional.empty(),
+        //             ImmutableList.of(new RelationConstraint("lineitem"), new RelationConstraint("orders")));
+        //
+        //     Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+        //
+        //     assertPlan("select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+        //             anyTree(
+        //                     join(INNER,
+        //                             ImmutableList.of(),
+        //                             tableScan("supplier"),
+        //                             anyTree(
+        //                                     join(INNER,
+        //                                             ImmutableList.of(equiJoinClause("L_ORDERKEY", "O_ORDERKEY")),
+        //                                             anyTree(
+        //                                                     tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))),
+        //                                             anyTree(
+        //                                                     tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
+        // }
     }
 
     @Test
