@@ -41,7 +41,9 @@ import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.planconstraints.JoinConstraint;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
+import com.facebook.presto.sql.planner.planconstraints.RelationConstraint;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.google.common.annotations.VisibleForTesting;
@@ -83,6 +85,7 @@ import static com.facebook.presto.sql.planner.EqualityInference.createEqualityIn
 import static com.facebook.presto.sql.planner.PlannerUtils.addProjections;
 import static com.facebook.presto.sql.planner.VariablesExtractor.extractUnique;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isBelowMaxBroadcastSize;
+import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isNodeBelowMaxBroadCastSize;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.INFINITE_COST_RESULT;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.UNKNOWN_COST_RESULT;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.MultiJoinNode.toMultiJoinNode;
@@ -90,7 +93,6 @@ import static com.facebook.presto.sql.planner.optimizations.JoinNodeUtils.toRowE
 import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isAtMostScalar;
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.getNonIdentityAssignments;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
-import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.in;
@@ -167,6 +169,7 @@ public class ReorderJoins
                 functionResolution,
                 metadata);
 
+        joinEnumerator.prePopulateMemo(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
         JoinEnumerationResult result = joinEnumerator.chooseJoinOrder(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
 
         if (!result.getPlanNode().isPresent()) {
@@ -223,6 +226,153 @@ public class ReorderJoins
             this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, functionResolution, metadata.getFunctionAndTypeManager());
             this.functionResolution = functionResolution;
             this.planConstraints = context.getSession().getPlanConstraints();
+        }
+
+        private void getPlanConstraintsSources(PlanConstraint constraint, ImmutableSet.Builder<PlanNode> foundSources, Set<PlanNode> sourceCandidates)
+        {
+            if (constraint instanceof JoinConstraint) {
+                ((JoinConstraint) constraint).getChildren().forEach(c-> getPlanConstraintsSources(c, foundSources, sourceCandidates));
+            }
+            if (constraint instanceof RelationConstraint) {
+                PlanNode matched = null;
+                for (PlanNode source : sourceCandidates) {
+                    // TODO : Ensure that only a single source would match this relation constraint
+                    if (JoinConstraint.matches(lookup, constraint, source)) {
+                        matched = source;
+                        break;
+                    }
+                }
+
+                checkState(matched != null, "Could not find a matching source");
+                foundSources.add(matched);
+            }
+        }
+
+        PlanNode buildConstrainedJoin(PlanConstraint constraint, List<VariableReferenceExpression> outputVariables, HashSet<PlanNode> sources)
+        {
+            if (constraint instanceof JoinConstraint) {
+                JoinConstraint joinConstraint = (JoinConstraint) constraint;
+                List<PlanNode> children = joinConstraint.getChildren().stream().map(c -> buildConstrainedJoin(c, outputVariables, sources)).collect(toImmutableList());
+                checkState(children.size() == 2, "Expected each child to map to a valid source");
+
+                PlanNode left = children.get(0);
+                PlanNode right = children.get(1);
+
+                Set<VariableReferenceExpression> leftVariables = ImmutableSet.copyOf(left.getOutputVariables());
+                Set<VariableReferenceExpression> rightVariables = ImmutableSet.copyOf(right.getOutputVariables());
+
+                List<RowExpression> joinPredicates = getJoinPredicates(leftVariables, rightVariables);
+
+                VariableAllocator variableAllocator = context.getVariableAllocator();
+                JoinCondition joinConditions = extractJoinConditions(joinPredicates, leftVariables, rightVariables, variableAllocator);
+                List<EquiJoinClause> joinClauses = joinConditions.getJoinClauses();
+                List<RowExpression> joinFilters = joinConditions.getJoinFilters();
+
+                // sort output variables so that the left input variables are first
+                List<VariableReferenceExpression> sortedOutputVariables = Stream.concat(left.getOutputVariables().stream(), right.getOutputVariables().stream())
+                        .filter(outputVariables::contains)
+                        .collect(toImmutableList());
+
+                if (!joinConditions.getNewLeftAssignments().isEmpty()) {
+                    ImmutableMap.Builder<VariableReferenceExpression, RowExpression> assignments = ImmutableMap.builder();
+                    left.getOutputVariables().forEach(outputVariable -> assignments.put(outputVariable, outputVariable));
+                    assignments.putAll(joinConditions.getNewLeftAssignments());
+
+                    left = addProjections(left, idAllocator, assignments.build());
+                }
+
+                if (!joinConditions.getNewRightAssignments().isEmpty()) {
+                    ImmutableMap.Builder<VariableReferenceExpression, RowExpression> assignments = ImmutableMap.builder();
+                    right.getOutputVariables().forEach(outputVariable -> assignments.put(outputVariable, outputVariable));
+                    assignments.putAll(joinConditions.getNewRightAssignments());
+
+                    right = addProjections(right, idAllocator, assignments.build());
+                }
+
+                Optional<com.facebook.presto.spi.plan.JoinDistributionType> distributionType = joinConstraint.getDistributionType();
+                if (joinClauses.isEmpty()) {
+                    // Cross Join must be REPLICATED
+                    distributionType = Optional.of(REPLICATED);
+
+                    // Cross Join must not filter the output variables
+                    ImmutableList.Builder<VariableReferenceExpression> builder = ImmutableList.builder();
+                    builder.addAll(left.getOutputVariables());
+                    builder.addAll(right.getOutputVariables());
+                    sortedOutputVariables = builder.build();
+                }
+                if (!distributionType.isPresent()) {
+                    // We must choose a distribution type, since the user has not specified one
+                    // TODO : Refactor/ fix how we choose the distribution type based on the session
+                    if (isNodeBelowMaxBroadCastSize(right, context)) {
+                        distributionType = Optional.of(REPLICATED);
+                    }
+                    else {
+                        distributionType = Optional.of(PARTITIONED);
+                    }
+                }
+
+                return new JoinNode(
+                        left.getSourceLocation(),
+                        idAllocator.getNextId(),
+                        INNER,
+                        left,
+                        right,
+                        joinClauses,
+                        sortedOutputVariables,
+                        joinFilters.isEmpty() ? Optional.empty() : Optional.of(and(joinFilters)),
+                        Optional.empty(),
+                        Optional.empty(),
+                        distributionType,
+                        ImmutableMap.of());
+            }
+            else if (constraint instanceof RelationConstraint) {
+                // Match against the sources and remove as we match
+                PlanNode matched = null;
+                for (PlanNode source : sources) {
+                    // TODO : Ensure that only a single source would match this relation constraint
+                    if (JoinConstraint.matches(lookup, constraint, source)) {
+                        matched = source;
+                        break;
+                    }
+                }
+
+                checkState(matched != null, "Could not find a matching source");
+                sources.remove(matched);
+                return matched;
+            }
+            throw new IllegalStateException(String.format("Found a constraint node that cannot be involved in building join trees: %s", constraint));
+        }
+
+        /**
+         * Pre-populate the memo with results that match a constrained plan node. We don't need to explore any children which match these sources
+         * @param allSources
+         * @param outputVariables
+         */
+        void prePopulateMemo(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
+        {
+            for (PlanConstraint planConstraint : context.getSession().getPlanConstraints()) {
+                LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
+                try {
+                    PlanNode candidateNode = buildConstrainedJoin(planConstraint, outputVariables, remainingSources);
+                    log.info("Built a candidate node from constraints");
+
+                    Sets.SetView<PlanNode> sourcesOfConstrainedNode = Sets.difference(allSources, remainingSources);
+                    memo.put(sourcesOfConstrainedNode, new JoinEnumerationResult(Optional.of(candidateNode), PlanCostEstimate.zero()));
+                }
+                catch (IllegalStateException ex) {
+                    log.warn("Could not build a candidate node from constraints");
+                }
+            }
+
+            for (Set<PlanNode> planNodes : memo.keySet()) {
+                StringBuilder sb = new StringBuilder("Pre populated : [");
+                for (PlanNode planNode : planNodes) {
+                    sb.append(lookup.resolve(planNode).toString());
+                    sb.append(", ");
+                }
+                sb.append("]");
+                log.info(sb.toString());
+            }
         }
 
         private JoinEnumerationResult chooseJoinOrder(LinkedHashSet<PlanNode> sources, List<VariableReferenceExpression> outputVariables)
@@ -311,7 +461,7 @@ public class ReorderJoins
             List<EquiJoinClause> joinClauses = joinConditions.getJoinClauses();
             List<RowExpression> joinFilters = joinConditions.getJoinFilters();
 
-            //Update the left & right variable sets with any new variables generated
+            // Update the left & right variable sets with any new variables generated
             leftVariables.addAll(joinConditions.getNewLeftAssignments().keySet());
             rightVariables.addAll(joinConditions.getNewRightAssignments().keySet());
 
@@ -329,18 +479,11 @@ public class ReorderJoins
                     requiredJoinVariables.stream()
                             .filter(leftVariables::contains)
                             .collect(toImmutableList()));
-
-            if (leftResult.getPlanNode().isPresent() &&
-                    planConstraints.stream().anyMatch(p -> matches(context.getLookup(), p, leftResult.getPlanNode().get()))) {
-                log.info("Chose a leftResult because of a matching plan constraint");
+            if (leftResult.equals(UNKNOWN_COST_RESULT)) {
+                return UNKNOWN_COST_RESULT;
             }
-            else {
-                if (leftResult.equals(UNKNOWN_COST_RESULT)) {
-                    return UNKNOWN_COST_RESULT;
-                }
-                if (leftResult.equals(INFINITE_COST_RESULT)) {
-                    return INFINITE_COST_RESULT;
-                }
+            if (leftResult.equals(INFINITE_COST_RESULT)) {
+                return INFINITE_COST_RESULT;
             }
 
             PlanNode left = leftResult.planNode.orElseThrow(() -> new VerifyException("Plan node is not present"));
@@ -357,18 +500,11 @@ public class ReorderJoins
                     requiredJoinVariables.stream()
                             .filter(rightVariables::contains)
                             .collect(toImmutableList()));
-
-            if (rightResult.getPlanNode().isPresent() &&
-                    planConstraints.stream().anyMatch(p -> matches(context.getLookup(), p, rightResult.getPlanNode().get()))) {
-                log.info("Chose a rightResult because of a matching plan constraint");
+            if (rightResult.equals(UNKNOWN_COST_RESULT)) {
+                return UNKNOWN_COST_RESULT;
             }
-            else {
-                if (rightResult.equals(UNKNOWN_COST_RESULT)) {
-                    return UNKNOWN_COST_RESULT;
-                }
-                if (rightResult.equals(INFINITE_COST_RESULT)) {
-                    return INFINITE_COST_RESULT;
-                }
+            if (rightResult.equals(INFINITE_COST_RESULT)) {
+                return INFINITE_COST_RESULT;
             }
 
             PlanNode right = rightResult.planNode.orElseThrow(() -> new VerifyException("Plan node is not present"));
@@ -550,55 +686,22 @@ public class ReorderJoins
         {
             // TODO avoid stat (but not cost) recalculation for all considered (distribution,flip) pairs, since resulting relation is the same in all case
             if (isAtMostScalar(joinNode.getRight(), lookup)) {
-                if (!ensureMatchesConstraints(joinNode)) {
-                    return INFINITE_COST_RESULT;
-                }
                 return createJoinEnumerationResult(joinNode.withDistributionType(REPLICATED));
             }
             if (isAtMostScalar(joinNode.getLeft(), lookup)) {
-                if (!ensureMatchesConstraints(joinNode)) {
-                    return INFINITE_COST_RESULT;
-                }
                 return createJoinEnumerationResult(joinNode.flipChildren().withDistributionType(REPLICATED));
             }
             List<JoinEnumerationResult> possibleJoinNodes = getPossibleJoinNodes(joinNode, getJoinDistributionType(session));
             verify(!possibleJoinNodes.isEmpty(), "possibleJoinNodes is empty");
-
-            if (!planConstraints.isEmpty()) {
-                int candidateJoinNodes = possibleJoinNodes.size();
-                possibleJoinNodes = possibleJoinNodes.stream().filter(r->  {
-                    if (!r.getPlanNode().isPresent()) {
-                        return true;
-                    }
-                    return ensureMatchesConstraints(r.getPlanNode().get());
-                }).collect(toImmutableList());
-
-                log.info("Possible join nodes with replicated/flips : Before [%d], After [%d]", candidateJoinNodes, possibleJoinNodes.size());
-            }
-
             if (possibleJoinNodes.stream().anyMatch(UNKNOWN_COST_RESULT::equals)) {
                 return UNKNOWN_COST_RESULT;
             }
             return resultComparator.min(possibleJoinNodes);
         }
 
-        private boolean ensureMatchesConstraints(PlanNode joinNode)
-        {
-            return planConstraints.stream().anyMatch(p -> matches(lookup, p, joinNode));
-        }
-
         private List<JoinEnumerationResult> getPossibleJoinNodes(JoinNode joinNode, JoinDistributionType distributionType)
         {
             checkArgument(joinNode.getType() == INNER, "unexpected join node type: %s", joinNode.getType());
-
-            if (joinNode.getCriteria().isEmpty() && joinNode.getType() == INNER) {
-                boolean joinOk = planConstraints.stream().anyMatch(p-> matches(context.getLookup(), p, joinNode));
-
-                if (!joinOk) {
-                    log.info("No join conditions or matching constraint. Join cost is infinite.");
-                    return ImmutableList.of(INFINITE_COST_RESULT);
-                }
-            }
 
             if (joinNode.isCrossJoin()) {
                 return getPossibleJoinNodes(joinNode, REPLICATED);
@@ -802,7 +905,7 @@ public class ReorderJoins
                     // We only do this if the ProjectNode assignments are deterministic
                     if (handleComplexEquiJoins && lookup.resolve(projectNode.getSource()) instanceof JoinNode &&
                             projectNode.getAssignments().getExpressions().stream().allMatch(determinismEvaluator::isDeterministic)) {
-                        //We keep track of only the non-identity assignments since these are the ones that will be inlined into the overall filters
+                        // We keep track of only the non-identity assignments since these are the ones that will be inlined into the overall filters
                         assignmentsBuilder.putAll(getNonIdentityAssignments(projectNode.getAssignments()));
                         flattenNode(projectNode.getSource(), limit, assignmentsBuilder);
                     }
@@ -910,6 +1013,7 @@ public class ReorderJoins
     {
         public static final JoinEnumerationResult UNKNOWN_COST_RESULT = new JoinEnumerationResult(Optional.empty(), PlanCostEstimate.unknown());
         public static final JoinEnumerationResult INFINITE_COST_RESULT = new JoinEnumerationResult(Optional.empty(), PlanCostEstimate.infinite());
+        public static final PlanCostEstimate CONSTRAINED_COST_ESTIMATE = PlanCostEstimate.zero();
 
         private final Optional<PlanNode> planNode;
         private final PlanCostEstimate cost;
