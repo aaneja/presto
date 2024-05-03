@@ -17,6 +17,7 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.drift.annotations.ThriftConstructor;
 import com.facebook.drift.annotations.ThriftField;
 import com.facebook.drift.annotations.ThriftStruct;
+import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.JoinType;
 import com.facebook.presto.spi.plan.PlanNode;
@@ -29,6 +30,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @ThriftStruct
 public class JoinConstraint
@@ -38,6 +40,7 @@ public class JoinConstraint
     private final JoinType joinType;
     private final Optional<JoinDistributionType> distributionType;
     private final List<PlanConstraint> children;
+    private static final Pattern tableHandlePattern = Pattern.compile("connectorHandle='(.*?):.*?'", Pattern.MULTILINE);
 
     @ThriftConstructor
     @JsonCreator
@@ -89,7 +92,10 @@ public class JoinConstraint
                 TableScanNode tableScanNode = (TableScanNode) toCompare;
                 String tableHandle = tableScanNode.getTable().getConnectorHandle().toString();
                 LOG.info("Found a table with handle : %s", tableHandle);
-                return tableHandle.contains(relationConstraint.getName());
+                return relationConstraint.getName().equals(tableHandle.split(":")[0]);
+            }
+            if (toCompare instanceof FilterNode) {
+                return matches(lookup, constraint, ((FilterNode) toCompare).getSource());
             }
             else {
                 // Assuming id is that property for now

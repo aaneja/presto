@@ -15,6 +15,8 @@ package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.drift.annotations.ThriftStruct;
 
+import java.util.Optional;
+
 @ThriftStruct
 public abstract class PlanConstraint
 {
@@ -23,4 +25,6 @@ public abstract class PlanConstraint
     {
         return true;
     }
+
+    Optional<Long> cardinality;
 }

@@ -107,9 +107,14 @@ public class DetermineJoinDistributionType
 
     public static boolean isBelowMaxBroadcastSize(JoinNode joinNode, Context context)
     {
+        PlanNode buildSide = joinNode.getRight();
+        return isNodeBelowMaxBroadCastSize(buildSide, context);
+    }
+
+    public static boolean isNodeBelowMaxBroadCastSize(PlanNode buildSide, Context context)
+    {
         DataSize joinMaxBroadcastTableSize = getJoinMaxBroadcastTableSize(context.getSession());
 
-        PlanNode buildSide = joinNode.getRight();
         PlanNodeStatsEstimate buildSideStatsEstimate = context.getStatsProvider().getStats(buildSide);
         double buildSideSizeInBytes = buildSideStatsEstimate.getOutputSizeInBytes(buildSide);
         return buildSideSizeInBytes <= joinMaxBroadcastTableSize.toBytes()
