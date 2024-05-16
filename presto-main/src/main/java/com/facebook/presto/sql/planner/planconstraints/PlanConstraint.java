@@ -14,17 +14,24 @@
 package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.drift.annotations.ThriftStruct;
-
-import java.util.Optional;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 @ThriftStruct
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "@type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = RelationConstraint.class, name = "relationconstraint"),
+        @JsonSubTypes.Type(value = CardinalityConstraint.class, name = "cardinalityconstraint"),
+        @JsonSubTypes.Type(value = JoinConstraint.class, name = "joinconstraint")})
 public abstract class PlanConstraint
 {
-    public  PlanConstraint() {}
+    public PlanConstraint() {}
+
     boolean isLeaf()
     {
         return true;
     }
-
-    Optional<Long> cardinality;
 }

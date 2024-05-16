@@ -15,7 +15,7 @@ package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.plan.JoinDistributionType;
-import com.facebook.presto.spi.plan.TableScanNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 
 import java.io.IOException;
@@ -23,24 +23,30 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.Scanner;
 
-import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
+import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
+import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
+import static com.facebook.presto.spi.plan.JoinType.INNER;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.CARD;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.JOIN;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static java.lang.String.format;
 
 public final class PlanConstraintsParser
 {
-    private static final String constraintsMarkerStart = "/*!";
-    private static final String constraintMarkerEnd = "*/";
+    static final String constraintsMarkerStart = "/*!";
+    static final String constraintsMarkerEnd = "*/";
 
     private PlanConstraintsParser() {}
 
+    @VisibleForTesting
     public static List<PlanConstraint> parse(Optional<String> query)
     {
-        if (!query.isPresent() || query.get() == "") {
+        if (!query.isPresent() || query.get().isEmpty()) {
             return ImmutableList.of();
         }
 
@@ -54,23 +60,20 @@ public final class PlanConstraintsParser
             return ImmutableList.of();
         }
 
-        int constraintsEndIndex = queryString.indexOf(constraintMarkerEnd, constraintsStartIndex);
+        int constraintsEndIndex = queryString.indexOf(constraintsMarkerEnd, constraintsStartIndex);
         String constraintsString = queryString.substring(constraintsStartIndex + constraintsMarkerStart.length(), constraintsEndIndex);
-//        return ImmutableList.of(new JoinConstraint(INNER,
-//                Optional.empty(),
-//                ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB"))));
+
         try {
             return parse(constraintsString.trim().toUpperCase());
         }
         catch (IOException e) {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Invalid join constraint");
+            throw new PrestoException(GENERIC_USER_ERROR, "Invalid join constraint");
         }
     }
 
     private static List<PlanConstraint> parse(String constraintsString)
             throws IOException
     {
-
         if (constraintsString.indexOf(JOIN.getString()) == -1 &&
                 constraintsString.indexOf(CARD.getString()) == -1) {
             throw new PrestoException(SYNTAX_ERROR, "Invalid hint format");
@@ -78,19 +81,22 @@ public final class PlanConstraintsParser
 
         List<PlanConstraint> planConstraints = new ArrayList<>();
         int startIndex = 0;
-        Optional<HintString> hintStringOptional;
-        while ((hintStringOptional = getNextHintString(constraintsString, startIndex)).isPresent()) {
+        Optional<HintString> hintStringOptional = getNextHint(constraintsString, startIndex);
+        while (hintStringOptional .isPresent()) {
             HintString hintString = hintStringOptional.get();
             Scanner scanner = new Scanner(new StringReader(hintString.getHint()));
             scanner.nextToken();
             startIndex = hintString.getEndIndex() - 1;
-            // TODO - create PlanConstraints from the scanner and constrainttype
+            planConstraints.add(parseHint(scanner, hintString.getConstraintType()));
+            hintStringOptional = getNextHint(constraintsString, startIndex);
         }
 
-        return planConstraints;
+        return planConstraints.stream()
+                .filter(Objects::nonNull)
+                .collect(toImmutableList());
     }
 
-    private static Optional<HintString> getNextHintString(String constraintsString, int startIndex)
+    private static Optional<HintString> getNextHint(String constraintsString, int startIndex)
     {
         if (startIndex >= constraintsString.length()) {
             return Optional.empty();
@@ -122,15 +128,94 @@ public final class PlanConstraintsParser
         }
 
         int offset = JOIN.getString().length();
-        int nextHintStartIndex = Math.max(constraintsString.indexOf(JOIN.getString(), hintStartIndex + offset),
-                constraintsString.indexOf(CARD.getString(), hintStartIndex + offset));
-
-        nextHintStartIndex = nextHintStartIndex == -1 ?
-                constraintsString.length() :
-                nextHintStartIndex;
+        int nextJoinHintIndex = constraintsString.indexOf(JOIN.getString(), hintStartIndex + offset);
+        int nextCardinalityHintIndex = constraintsString.indexOf(CARD.getString(), hintStartIndex + offset);
+        nextJoinHintIndex = nextJoinHintIndex == -1 ? constraintsString.length() : nextJoinHintIndex;
+        nextCardinalityHintIndex = nextCardinalityHintIndex == -1 ? constraintsString.length() : nextCardinalityHintIndex;
+        int nextHintStartIndex = Math.min(nextJoinHintIndex, nextCardinalityHintIndex);
         String hintString = constraintsString.substring(hintStartIndex + offset, nextHintStartIndex).trim();
-
         return Optional.of(new HintString(hintString, constraintType, hintStartIndex, nextHintStartIndex));
+    }
+
+    private static PlanConstraint parseHint(Scanner scanner, ConstraintType constraintType)
+            throws IOException
+    {
+        switch (scanner.getToken()) {
+            case NUMBER:
+                long value = scanner.getNumber();
+                scanner.nextToken();
+                if (constraintType != CARD) {
+                    throw new IOException(format("unexpected number (%d) in constraint string", value));
+                }
+                return new CardinalityEstimate(value);
+            case NAME:
+                String name = scanner.getName();
+                scanner.nextToken();
+                return new RelationConstraint(name);
+            case LPAREN:
+                scanner.nextToken();
+                ArrayList<PlanConstraint> nodes = parseList(scanner, constraintType);
+
+                if (scanner.getToken() != Token.RPAREN) {
+                    throw new IOException(") expected");
+                }
+
+                scanner.nextToken();
+
+                if (constraintType == CARD) {
+                    if (nodes.size() != 2 || !(nodes.get(1) instanceof CardinalityEstimate)) {
+                        //!(nodes.get(nodes.size() - 1) instanceof CardinalityEstimate)) {
+                        throw new IOException("malformed cardinality constraint");
+                    }
+                    //return new CardinalityConstraint(nodes.subList(0, nodes.size() - 1), (CardinalityEstimate) nodes.get(nodes.size() - 1));
+                    return new CardinalityConstraint(nodes.get(0), (CardinalityEstimate) nodes.get(1));
+                }
+
+                Optional<JoinDistributionType> distributionType = Optional.empty();
+                if (scanner.getToken() == Token.LBRACKET) {
+                    scanner.nextToken();
+
+                    if (scanner.getToken() == Token.PARTITIONED) {
+                        distributionType = Optional.of(PARTITIONED);
+                    }
+                    else {
+                        distributionType = Optional.of(REPLICATED);
+                    }
+
+                    scanner.nextToken();
+
+                    if (scanner.getToken() != Token.RBRACKET) {
+                        throw new RuntimeException("] expected");
+                    }
+
+                    scanner.nextToken();
+                }
+
+                // TODO: add other join types
+                return new JoinConstraint(INNER, distributionType, nodes);
+            case EOF:
+                return null;
+            default:
+                throw new RuntimeException("Number or ( expected");
+        }
+    }
+
+    private static ArrayList<PlanConstraint> parseList(Scanner scanner, ConstraintType constraintType)
+            throws IOException
+    {
+        ArrayList<PlanConstraint> nodes = new ArrayList<>();
+        if (scanner.getToken() != Token.RPAREN) {
+            nodes.add(parseHint(scanner, JOIN));
+
+            while (scanner.getToken() != Token.RPAREN) {
+                if (scanner.getToken() == Token.EOF) {
+                    throw new RuntimeException("unexpected EOF when parsing constraint string");
+                }
+                nodes.add(parseHint(scanner, constraintType));
+            }
+        }
+
+        return nodes;
     }
 
     public enum ConstraintType
@@ -206,6 +291,7 @@ public final class PlanConstraintsParser
                 token = Token.EOF;
                 return token;
             }
+            // TODO - estimates can also be floating point
             if (c >= '0' && c <= '9') {
                 number = c - '0';
                 c = inputReader.read();

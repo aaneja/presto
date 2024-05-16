@@ -27,8 +27,10 @@ import com.facebook.presto.sql.planner.iterative.GroupReference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -44,7 +46,9 @@ public class JoinConstraint
 
     @ThriftConstructor
     @JsonCreator
-    public JoinConstraint(JoinType joinType, Optional<JoinDistributionType> distributionType, List<PlanConstraint> children)
+    public JoinConstraint(@JsonProperty("joinType") JoinType joinType,
+            @JsonProperty("distributionType") Optional<JoinDistributionType> distributionType,
+            @JsonProperty("children") List<PlanConstraint> children)
     {
         this.joinType = joinType;
         this.distributionType = distributionType;
@@ -128,5 +132,26 @@ public class JoinConstraint
     public List<PlanConstraint> getChildren()
     {
         return children;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(joinType, distributionType, children);
+    }
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if ((obj == null) || (getClass() != obj.getClass())) {
+            return false;
+        }
+
+        JoinConstraint o = (JoinConstraint) obj;
+        return Objects.equals(joinType, o.joinType) &&
+                Objects.equals(distributionType, o.distributionType) &&
+                Objects.equals(children, o.children);
     }
 }
