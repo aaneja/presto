@@ -233,7 +233,7 @@ public class ReorderJoins
         private void getPlanConstraintsSources(PlanConstraint constraint, ImmutableSet.Builder<PlanNode> foundSources, Set<PlanNode> sourceCandidates)
         {
             if (constraint instanceof JoinConstraint) {
-                ((JoinConstraint) constraint).getChildren().forEach(c-> getPlanConstraintsSources(c, foundSources, sourceCandidates));
+                ((JoinConstraint) constraint).getChildren().forEach(c -> getPlanConstraintsSources(c, foundSources, sourceCandidates));
             }
             if (constraint instanceof RelationConstraint) {
                 PlanNode matched = null;

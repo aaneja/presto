@@ -22,22 +22,22 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Objects;
 
 @ThriftStruct
-public class RelationConstraint
+public class CardinalityEstimate
         extends PlanConstraint
 {
-    private final String name;
+    private final long cardinality;
 
     @ThriftConstructor
     @JsonCreator
-    public RelationConstraint(@JsonProperty("name") String name)
+    public CardinalityEstimate(@JsonProperty("cardinality") long cardinality)
     {
-        this.name = name;
+        this.cardinality = cardinality;
     }
 
     @ThriftField(1)
-    public String getName()
+    public long getCardinality()
     {
-        return name;
+        return cardinality;
     }
 
     @Override
@@ -49,8 +49,9 @@ public class RelationConstraint
     @Override
     public int hashCode()
     {
-        return Objects.hash(name);
+        return Objects.hash(cardinality);
     }
+
     @Override
     public boolean equals(Object obj)
     {
@@ -61,7 +62,7 @@ public class RelationConstraint
             return false;
         }
 
-        RelationConstraint o = (RelationConstraint) obj;
-        return Objects.equals(name, o.name);
+        CardinalityEstimate o = (CardinalityEstimate) obj;
+        return cardinality == o.cardinality;
     }
 }
