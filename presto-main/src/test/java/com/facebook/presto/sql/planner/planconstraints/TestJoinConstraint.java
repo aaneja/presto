@@ -38,10 +38,10 @@ import static org.testng.Assert.assertTrue;
 
 public class TestJoinConstraint
 {
+    private final Lookup lookup = Lookup.noLookup();
     private Metadata metadata;
     private Session session;
     private PlanNodeIdAllocator idAllocator;
-    private final Lookup lookup = Lookup.noLookup();
 
     public TestJoinConstraint()
     {
@@ -57,19 +57,6 @@ public class TestJoinConstraint
                 ImmutableMap.of());
         metadata = queryRunner.getMetadata();
     }
-
-//    @Test
-//    public void testBuildJoinConstraint()
-//            throws IOException
-//    {
-//        ArrayList<JoinConstraint> joinConstraints = new ArrayList<>();
-//        JoinConstraint.parse("JOIN(((t4 t3) t2) t1) CARD(t1 1000000) JOIN(((t4 t3) [P]) t2) [P] t1) [R]", joinConstraints);
-//        for (JoinConstraint joinConstraint : joinConstraints) {
-//            System.out.println(joinConstraint.baseIdSet());
-//        }
-//
-//        System.out.println(joinConstraints);
-//    }
 
     @Test
     public void testSmokeJoinConstraint()

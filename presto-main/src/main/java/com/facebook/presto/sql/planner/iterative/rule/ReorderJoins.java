@@ -48,6 +48,7 @@ import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Predicate;
+import com.google.common.base.Throwables;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -95,6 +96,7 @@ import static com.facebook.presto.sql.planner.optimizations.JoinNodeUtils.toRowE
 import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isAtMostScalar;
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.getNonIdentityAssignments;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
+import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.in;
@@ -239,7 +241,7 @@ public class ReorderJoins
                 PlanNode matched = null;
                 for (PlanNode source : sourceCandidates) {
                     // TODO : Ensure that only a single source would match this relation constraint
-                    if (JoinConstraint.matches(lookup, constraint, source)) {
+                    if (matches(lookup, constraint, source)) {
                         matched = source;
                         break;
                     }
@@ -332,7 +334,7 @@ public class ReorderJoins
                 PlanNode matched = null;
                 for (PlanNode source : sources) {
                     // TODO : Ensure that only a single source would match this relation constraint
-                    if (JoinConstraint.matches(lookup, constraint, source)) {
+                    if (matches(lookup, constraint, source)) {
                         matched = source;
                         break;
                     }
@@ -362,7 +364,7 @@ public class ReorderJoins
                     memo.put(sourcesOfConstrainedNode, new JoinEnumerationResult(Optional.of(candidateNode), PlanCostEstimate.zero()));
                 }
                 catch (IllegalStateException ex) {
-                    log.warn("Could not build a candidate node from constraints");
+                    log.warn("Could not build a candidate node from constraints : %s", Throwables.getStackTraceAsString(ex));
                 }
             }
 

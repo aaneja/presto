@@ -28,22 +28,26 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @ThriftStruct
 public class JoinConstraint
         extends PlanConstraint
 {
+    public static final Pattern TPCH_TABLE_NAME_PATTERN = Pattern.compile("connectorId='tpch', connectorHandle='(.*?):.*?'", Pattern.MULTILINE);
+    public static final Pattern TPCDS_TABLE_NAME_PATTERN = Pattern.compile("connectorHandle='tpcds:(.*?):.*?'", Pattern.MULTILINE);
+    public static final Pattern HIVE_TABLE_NAME_PATTERN = Pattern.compile("tableName=(.*?),", Pattern.MULTILINE);
+    public static final Pattern ICEBERG_TABLE_NAME_PATTERN = Pattern.compile("connectorHandle='(.*?)\\$data@Optional\\[[0-9]+\\]',", Pattern.MULTILINE);
     private static final Logger LOG = Logger.get(JoinConstraint.class);
     private final JoinType joinType;
     private final Optional<JoinDistributionType> distributionType;
     private final List<PlanConstraint> children;
-    private static final Pattern tableHandlePattern = Pattern.compile("connectorHandle='(.*?):.*?'", Pattern.MULTILINE);
-
     @ThriftConstructor
     @JsonCreator
     public JoinConstraint(@JsonProperty("joinType") JoinType joinType,
@@ -95,8 +99,9 @@ public class JoinConstraint
             if (toCompare instanceof TableScanNode) {
                 TableScanNode tableScanNode = (TableScanNode) toCompare;
                 String tableHandle = tableScanNode.getTable().getConnectorHandle().toString();
-                LOG.info("Found a table with handle : %s", tableHandle);
-                return relationConstraint.getName().equals(tableHandle.split(":")[0]);
+                String tableName = extractTableName(tableHandle);
+                LOG.info("Extracted [%s] from table handle : %s", tableName, tableHandle);
+                return relationConstraint.getName().equalsIgnoreCase(tableName);
             }
             if (toCompare instanceof FilterNode) {
                 return matches(lookup, constraint, ((FilterNode) toCompare).getSource());
@@ -108,6 +113,19 @@ public class JoinConstraint
             }
         }
         return false;
+    }
+
+    // TODO : Enhance this for other connectors as well, this is a hack at the moment
+    private static String extractTableName(String field)
+    {
+        List<Pattern> matchers = ImmutableList.of(TPCH_TABLE_NAME_PATTERN, TPCDS_TABLE_NAME_PATTERN, HIVE_TABLE_NAME_PATTERN, ICEBERG_TABLE_NAME_PATTERN);
+        for (Pattern pattern : matchers) {
+            Matcher matcher = pattern.matcher(field);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        throw new RuntimeException("Unable to extract table name from " + field);
     }
 
     @Override
@@ -139,6 +157,7 @@ public class JoinConstraint
     {
         return Objects.hash(joinType, distributionType, children);
     }
+
     @Override
     public boolean equals(Object obj)
     {
