@@ -82,6 +82,28 @@ public class TestPlanConstraintsParser
         assertEquals(planConstraints.get(1), expectedCardinalityConstraint);
         assertEquals(planConstraints.get(2), expectedCardinalityConstraint);
         assertEquals(planConstraints.get(3), expectedJoinConstraint);
+
+        planConstraintString = Optional.of(constraintsMarkerStart + "  join (a(b c)d) " + constraintsMarkerEnd);
+        planConstraints = parse(planConstraintString);
+        assertEquals(planConstraints.size(), 1);
+        assertEquals(planConstraints.get(0), new JoinConstraint(INNER,
+                Optional.empty(),
+                ImmutableList.of(new RelationConstraint("A"),
+                        new JoinConstraint(INNER,
+                                Optional.empty(),
+                                ImmutableList.of(new RelationConstraint("B"), new RelationConstraint("C"))),
+                        new RelationConstraint("D"))));
+
+        planConstraintString = Optional.of(constraintsMarkerStart + "  join (a(b c)[P]d)[R] " + constraintsMarkerEnd);
+        planConstraints = parse(planConstraintString);
+        assertEquals(planConstraints.size(), 1);
+        assertEquals(planConstraints.get(0), new JoinConstraint(INNER,
+                Optional.of(REPLICATED),
+                ImmutableList.of(new RelationConstraint("A"),
+                        new JoinConstraint(INNER,
+                                Optional.of(PARTITIONED),
+                                ImmutableList.of(new RelationConstraint("B"), new RelationConstraint("C"))),
+                        new RelationConstraint("D"))));
     }
 
     @Test
