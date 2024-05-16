@@ -325,7 +325,7 @@ public final class PlanConstraintsParser
                     break;
                 default:
                     StringBuilder builder = new StringBuilder();
-                    while (c != ' ' && c != ')') {
+                    while (c != ' ' && c != ')' && c != '(') {
                         builder.append((char) c);
                         c = inputReader.read();
                     }
