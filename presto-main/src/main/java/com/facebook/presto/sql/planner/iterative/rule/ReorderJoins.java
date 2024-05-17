@@ -172,17 +172,23 @@ public class ReorderJoins
                 determinismEvaluator,
                 functionResolution,
                 metadata);
-
-        joinEnumerator.prePopulateMemo(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
-        JoinEnumerationResult result = joinEnumerator.chooseJoinOrder(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
-
-        if (!result.getPlanNode().isPresent()) {
-            return Result.empty();
-        }
-
         statsSource = context.getStatsProvider().getStats(joinNode).getSourceInfo().getSourceInfoName();
 
-        PlanNode transformedPlan = result.getPlanNode().get();
+        Set<PlanNode> rewrittenSources = joinEnumerator.matchJoinConstraintSources(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
+
+        PlanNode transformedPlan;
+        if (rewrittenSources.size() > 1) {
+            JoinEnumerationResult result = joinEnumerator.chooseJoinOrder(new LinkedHashSet<>(rewrittenSources), multiJoinNode.getOutputVariables());
+
+            if (!result.getPlanNode().isPresent()) {
+                return Result.empty();
+            }
+            transformedPlan = result.getPlanNode().get();
+        }
+        else {
+            transformedPlan = rewrittenSources.iterator().next();
+        }
+
         if (!multiJoinNode.getAssignments().isEmpty()) {
             transformedPlan = new ProjectNode(
                     transformedPlan.getSourceLocation(),
@@ -348,12 +354,14 @@ public class ReorderJoins
         }
 
         /**
-         * Pre-populate the memo with results that match a constrained plan node. We don't need to explore any children which match these sources
+         * Remove the sources that are matched by the constraints with a pre-defined JoinNode
          * @param allSources
          * @param outputVariables
          */
-        private void prePopulateMemo(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
+        private Set<PlanNode> matchJoinConstraintSources(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
         {
+            Set<PlanNode> rewrittenSources = ImmutableSet.of();
+            PlanNode rewrittenPlanNode = null;
             for (PlanConstraint planConstraint : context.getSession().getPlanConstraints()) {
                 LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
                 try {
@@ -361,22 +369,37 @@ public class ReorderJoins
                     log.info("Built a candidate node from constraints");
 
                     Sets.SetView<PlanNode> sourcesOfConstrainedNode = Sets.difference(allSources, remainingSources);
-                    memo.put(sourcesOfConstrainedNode, new JoinEnumerationResult(Optional.of(candidateNode), PlanCostEstimate.zero()));
+                    if (sourcesOfConstrainedNode.size() > rewrittenSources.size()) {
+                        rewrittenSources = sourcesOfConstrainedNode;
+                        rewrittenPlanNode = candidateNode;
+                    }
+                    // memo.put(sourcesOfConstrainedNode, new JoinEnumerationResult(Optional.of(candidateNode), PlanCostEstimate.zero()));
                 }
                 catch (IllegalStateException ex) {
                     log.warn("Could not build a candidate node from constraints : %s", Throwables.getStackTraceAsString(ex));
                 }
             }
 
-            for (Set<PlanNode> planNodes : memo.keySet()) {
-                StringBuilder sb = new StringBuilder("Pre populated : [");
-                for (PlanNode planNode : planNodes) {
-                    sb.append(lookup.resolve(planNode).toString());
-                    sb.append(", ");
-                }
-                sb.append("]");
-                log.info(sb.toString());
+            StringBuilder sb = new StringBuilder("Removing sources : [");
+            for (PlanNode planNode : rewrittenSources) {
+                sb.append(lookup.resolve(planNode).toString());
+                sb.append(", ");
             }
+            sb.append("]");
+            log.info(sb.toString());
+
+            if (rewrittenPlanNode!=null) {
+                ImmutableSet.Builder<PlanNode> builder = ImmutableSet.builder();
+                builder.add(rewrittenPlanNode);
+                for (PlanNode source : allSources) {
+                    if (!rewrittenSources.contains(source)) {
+                        builder.add(source);
+                    }
+                }
+                return builder.build();
+            }
+
+            return allSources;
         }
 
         private JoinEnumerationResult chooseJoinOrder(LinkedHashSet<PlanNode> sources, List<VariableReferenceExpression> outputVariables)
