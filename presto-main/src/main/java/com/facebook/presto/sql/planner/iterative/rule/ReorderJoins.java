@@ -350,7 +350,7 @@ public class ReorderJoins
          * @param allSources
          * @param outputVariables
          */
-        void prePopulateMemo(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
+        private void prePopulateMemo(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
         {
             for (PlanConstraint planConstraint : context.getSession().getPlanConstraints()) {
                 LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
