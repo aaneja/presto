@@ -30,6 +30,15 @@ import static org.testng.Assert.assertEquals;
 public class TestPlanConstraintsParser
 {
     @Test
+    public void testTableNamesAsTokenKeywordPrefixes()
+    {
+        // All of these fail to parse
+        parse(Optional.of(constraintsMarkerStart + " join (replicated supplier) " + constraintsMarkerEnd));
+        parse(Optional.of(constraintsMarkerStart + " join (p supplier) " + constraintsMarkerEnd));
+        parse(Optional.of(constraintsMarkerStart + " join (part supplier) " + constraintsMarkerEnd));
+    }
+
+    @Test
     public void testSimplePlanConstraints()
     {
         JoinConstraint expectedJoinConstraint = new JoinConstraint(INNER,
