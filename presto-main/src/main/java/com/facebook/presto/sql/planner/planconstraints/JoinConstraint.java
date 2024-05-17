@@ -40,6 +40,7 @@ import java.util.regex.Pattern;
 public class JoinConstraint
         extends PlanConstraint
 {
+    public static final Pattern TEST_SETUP_TABLE_NAME_PATTERN = Pattern.compile("(\\w+):sf\\d+", Pattern.MULTILINE);
     public static final Pattern TPCH_TABLE_NAME_PATTERN = Pattern.compile("connectorId='tpch', connectorHandle='(.*?):.*?'", Pattern.MULTILINE);
     public static final Pattern TPCDS_TABLE_NAME_PATTERN = Pattern.compile("connectorHandle='tpcds:(.*?):.*?'", Pattern.MULTILINE);
     public static final Pattern HIVE_TABLE_NAME_PATTERN = Pattern.compile("tableName=(.*?),", Pattern.MULTILINE);
@@ -48,6 +49,7 @@ public class JoinConstraint
     private final JoinType joinType;
     private final Optional<JoinDistributionType> distributionType;
     private final List<PlanConstraint> children;
+
     @ThriftConstructor
     @JsonCreator
     public JoinConstraint(@JsonProperty("joinType") JoinType joinType,
@@ -118,7 +120,7 @@ public class JoinConstraint
     // TODO : Enhance this for other connectors as well, this is a hack at the moment
     private static String extractTableName(String field)
     {
-        List<Pattern> matchers = ImmutableList.of(TPCH_TABLE_NAME_PATTERN, TPCDS_TABLE_NAME_PATTERN, HIVE_TABLE_NAME_PATTERN, ICEBERG_TABLE_NAME_PATTERN);
+        List<Pattern> matchers = ImmutableList.of(TEST_SETUP_TABLE_NAME_PATTERN, TPCH_TABLE_NAME_PATTERN, TPCDS_TABLE_NAME_PATTERN, HIVE_TABLE_NAME_PATTERN, ICEBERG_TABLE_NAME_PATTERN);
         for (Pattern pattern : matchers) {
             Matcher matcher = pattern.matcher(field);
             if (matcher.find()) {
