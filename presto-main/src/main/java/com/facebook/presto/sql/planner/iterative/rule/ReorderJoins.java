@@ -96,6 +96,7 @@ import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.MultiJ
 import static com.facebook.presto.sql.planner.optimizations.JoinNodeUtils.toRowExpression;
 import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isAtMostScalar;
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.getNonIdentityAssignments;
+import static com.facebook.presto.sql.planner.plan.AssignmentUtils.identityAssignments;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
 import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -179,7 +180,7 @@ public class ReorderJoins
                 metadata);
         statsSource = context.getStatsProvider().getStats(joinNode).getSourceInfo().getSourceInfoName();
 
-        Set<PlanNode> rewrittenSources = joinEnumerator.matchJoinConstraintSources(multiJoinNode.getSources(), multiJoinNode.getOutputVariables());
+        Set<PlanNode> rewrittenSources = joinEnumerator.matchJoinConstraintSources(multiJoinNode.getSources());
 
         PlanNode transformedPlan;
         if (rewrittenSources.size() > 1) {
@@ -192,6 +193,17 @@ public class ReorderJoins
         }
         else {
             transformedPlan = rewrittenSources.iterator().next();
+        }
+
+        if (multiJoinNode.getOutputVariables().size() != transformedPlan.getOutputVariables().size() &&
+                !ImmutableSet.copyOf(multiJoinNode.getOutputVariables()).equals(ImmutableSet.copyOf(transformedPlan.getOutputVariables()))) {
+            // We may have built a transformed plan with some redundant output variables
+            // If so, Project those out
+            transformedPlan = new ProjectNode(transformedPlan.getSourceLocation(),
+                    context.getIdAllocator().getNextId(),
+                    transformedPlan,
+                    identityAssignments(multiJoinNode.getOutputVariables()),
+                    LOCAL);
         }
 
         if (!multiJoinNode.getAssignments().isEmpty()) {
@@ -263,15 +275,59 @@ public class ReorderJoins
             }
         }
 
-        PlanNode buildConstrainedJoin(PlanConstraint constraint, List<VariableReferenceExpression> outputVariables, HashSet<PlanNode> sources)
+        /**
+         * Remove the sources that are matched by the constraints with a pre-defined JoinNode
+         * The Join nodes and intermediate nodes may contain unused output variables
+         * A pass of PruneOutputs may be needed to clear these up
+         * @param allSources
+         */
+        private Set<PlanNode> matchJoinConstraintSources(Set<PlanNode> allSources)
+        {
+            List<PlanConstraint> planConstraints = context.getSession().getPlanConstraints();
+            if (planConstraints.isEmpty()) {
+                return allSources;
+            }
+
+            Map<Set<PlanNode>, PlanNode> matchingConstraints = new HashMap<>();
+            for (PlanConstraint planConstraint : planConstraints) {
+                LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
+                try {
+                    PlanNode candidateNode = buildConstrainedJoin(planConstraint, remainingSources);
+                    LogPlanTreeOptimizer.MinimalTreePrinter minimalTreePrinter = new LogPlanTreeOptimizer.MinimalTreePrinter(context.getLookup());
+                    candidateNode.accept(minimalTreePrinter, 0);
+                    log.info("Built a candidate node from constraints : %n%s", minimalTreePrinter.result());
+
+                    Sets.SetView<PlanNode> sourcesOfConstrainedNode = Sets.difference(allSources, remainingSources);
+                    matchingConstraints.put(sourcesOfConstrainedNode, candidateNode);
+                }
+                catch (IllegalStateException ex) {
+                    log.warn("Could not build a candidate node from constraints : %s", Throwables.getStackTraceAsString(ex));
+                }
+            }
+
+            HashSet<PlanNode> rewrittenSources = new HashSet<>(allSources);
+            matchingConstraints.keySet().stream()
+                    .sorted((o1, o2) -> Integer.compare(o2.size(), o1.size()))
+                    .forEach(group -> {
+                        // We try to eager match the rewrites possible by removing the ones that replace the max number of nodes first
+                        PlanNode candidate = matchingConstraints.get(group);
+                        if (rewrittenSources.containsAll(group)) {
+                            // Remove the source we matched against
+                            rewrittenSources.removeAll(group);
+                            // With the new rewritten source
+                            rewrittenSources.add(candidate);
+                        }
+                    });
+
+            return rewrittenSources;
+        }
+
+        PlanNode buildConstrainedJoin(PlanConstraint constraint, HashSet<PlanNode> sources)
         {
             if (constraint instanceof JoinConstraint) {
                 JoinConstraint joinConstraint = (JoinConstraint) constraint;
-                // TODO : We have a logical bug here.
-                // The output variables we need from the left and right source are to be derived from
-                // 1. The join predicates
-                // 2. Existing output variables
-                List<PlanNode> children = joinConstraint.getChildren().stream().map(c -> buildConstrainedJoin(c, outputVariables, sources)).collect(toImmutableList());
+
+                List<PlanNode> children = joinConstraint.getChildren().stream().map(c -> buildConstrainedJoin(c, sources)).collect(toImmutableList());
                 checkState(children.size() == 2, "Expected each child to map to a valid source");
 
                 PlanNode left = children.get(0);
@@ -287,9 +343,9 @@ public class ReorderJoins
                 List<EquiJoinClause> joinClauses = joinConditions.getJoinClauses();
                 List<RowExpression> joinFilters = joinConditions.getJoinFilters();
 
-                // sort output variables so that the left input variables are first
+                // Sort output variables so that the left input variables are first
+                // Don't filter out any variables from the join sources just yet, we don't know which ones are used by parent nodes
                 List<VariableReferenceExpression> sortedOutputVariables = Stream.concat(left.getOutputVariables().stream(), right.getOutputVariables().stream())
-                        .filter(outputVariables::contains)
                         .collect(toImmutableList());
 
                 if (!joinConditions.getNewLeftAssignments().isEmpty()) {
@@ -357,57 +413,11 @@ public class ReorderJoins
 
                 checkState(matched != null, "Could not find a matching source");
                 sources.remove(matched);
+                // See if we need to add a FilterNode
+                matched = getSourceNode(matched.getOutputVariables(), matched);
                 return matched;
             }
             throw new IllegalStateException(String.format("Found a constraint node that cannot be involved in building join trees: %s", constraint));
-        }
-
-        /**
-         * Remove the sources that are matched by the constraints with a pre-defined JoinNode
-         * @param allSources
-         * @param outputVariables
-         */
-        private Set<PlanNode> matchJoinConstraintSources(Set<PlanNode> allSources, List<VariableReferenceExpression> outputVariables)
-        {
-            HashMap<Set<PlanNode>, PlanNode> matchingConstraints = new HashMap<>();
-            for (PlanConstraint planConstraint : context.getSession().getPlanConstraints()) {
-                LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
-                try {
-                    PlanNode candidateNode = buildConstrainedJoin(planConstraint, outputVariables, remainingSources);
-                    log.info("Built a candidate node from constraints");
-
-                    Sets.SetView<PlanNode> sourcesOfConstrainedNode = Sets.difference(allSources, remainingSources);
-                    matchingConstraints.put(sourcesOfConstrainedNode, candidateNode);
-                }
-                catch (IllegalStateException ex) {
-                    log.warn("Could not build a candidate node from constraints : %s", Throwables.getStackTraceAsString(ex));
-                }
-            }
-
-            StringBuilder sb = new StringBuilder("Candidates for source that can be removed are : [");
-            for (Set<PlanNode> rewrittenSources : matchingConstraints.keySet()) {
-                sb.append("Source Set :\n");
-                for (PlanNode planNode : rewrittenSources) {
-                    sb.append(lookup.resolve(planNode).toString());
-                    sb.append(",\n");
-                }
-            }
-            sb.append("]");
-            log.info(sb.toString());
-
-            HashSet<PlanNode> rewrittenSources = new HashSet<>(allSources);
-            matchingConstraints.keySet().stream()
-                    .sorted((o1, o2) -> Integer.compare(o2.size(), o1.size()))
-                    .forEach(group -> {
-                        // We try to eager match the rewrites possible by removing the ones that replace the max number of nodes first
-                        PlanNode candidate = matchingConstraints.get(group);
-                        if (rewrittenSources.containsAll(group)) {
-                            rewrittenSources.removeAll(group);
-                            rewrittenSources.add(candidate);
-                        }
-                    });
-
-            return rewrittenSources;
         }
 
         private JoinEnumerationResult chooseJoinOrder(LinkedHashSet<PlanNode> sources, List<VariableReferenceExpression> outputVariables)
@@ -602,20 +612,26 @@ public class ReorderJoins
         {
             if (nodes.size() == 1) {
                 PlanNode planNode = getOnlyElement(nodes);
-                ImmutableList.Builder<RowExpression> predicates = ImmutableList.builder();
-                predicates.addAll(allFilterInference.generateEqualitiesPartitionedBy(outputVariables::contains).getScopeEqualities());
-                EqualityInference.Builder builder = new EqualityInference.Builder(metadata);
-                StreamSupport.stream(builder.nonInferableConjuncts(allFilter).spliterator(), false)
-                        .map(conjunct -> allFilterInference.rewriteExpression(conjunct, outputVariables::contains))
-                        .filter(Objects::nonNull)
-                        .forEach(predicates::add);
-                RowExpression filter = logicalRowExpressions.combineConjuncts(predicates.build());
-                if (!TRUE_CONSTANT.equals(filter)) {
-                    planNode = new FilterNode(planNode.getSourceLocation(), idAllocator.getNextId(), planNode, filter);
-                }
+                planNode = getSourceNode(outputVariables, planNode);
                 return createJoinEnumerationResult(planNode);
             }
             return chooseJoinOrder(nodes, outputVariables);
+        }
+
+        private PlanNode getSourceNode(List<VariableReferenceExpression> outputVariables, PlanNode planNode)
+        {
+            ImmutableList.Builder<RowExpression> predicates = ImmutableList.builder();
+            predicates.addAll(allFilterInference.generateEqualitiesPartitionedBy(outputVariables::contains).getScopeEqualities());
+            EqualityInference.Builder builder = new EqualityInference.Builder(metadata);
+            StreamSupport.stream(builder.nonInferableConjuncts(allFilter).spliterator(), false)
+                    .map(conjunct -> allFilterInference.rewriteExpression(conjunct, outputVariables::contains))
+                    .filter(Objects::nonNull)
+                    .forEach(predicates::add);
+            RowExpression filter = logicalRowExpressions.combineConjuncts(predicates.build());
+            if (!TRUE_CONSTANT.equals(filter)) {
+                planNode = new FilterNode(planNode.getSourceLocation(), idAllocator.getNextId(), planNode, filter);
+            }
+            return planNode;
         }
 
         @VisibleForTesting
