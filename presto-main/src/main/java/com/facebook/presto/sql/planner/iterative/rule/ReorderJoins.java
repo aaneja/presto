@@ -23,6 +23,7 @@ import com.facebook.presto.expressions.LogicalRowExpressions;
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.spi.PrestoWarning;
 import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.EquiJoinClause;
@@ -78,6 +79,7 @@ import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTAN
 import static com.facebook.presto.expressions.LogicalRowExpressions.and;
 import static com.facebook.presto.expressions.LogicalRowExpressions.extractConjuncts;
 import static com.facebook.presto.expressions.RowExpressionNodeInliner.replaceExpression;
+import static com.facebook.presto.spi.StandardWarningCode.CONSTRAINT_MISMATCH;
 import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
@@ -416,7 +418,12 @@ public class ReorderJoins
                     }
                 }
 
-                checkState(matched != null, "Could not find a matching source");
+                if (matched == null) {
+                    String message = "Supplied plan constraint did not match during join reordering";
+                    session.getWarningCollector().add(new PrestoWarning(CONSTRAINT_MISMATCH, message));
+                    throw new IllegalStateException(message);
+                }
+
                 sources.remove(matched);
                 // See if we need to add a FilterNode
                 matched = getSourceNode(matched.getOutputVariables(), matched);
