@@ -70,7 +70,8 @@ public class LogPlanTreeOptimizer
             this.lookup = lookup;
         }
 
-        public void reset() {
+        public void reset()
+        {
             result.setLength(0);
         }
 
