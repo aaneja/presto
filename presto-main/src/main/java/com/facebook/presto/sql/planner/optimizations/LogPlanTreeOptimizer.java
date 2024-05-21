@@ -70,6 +70,10 @@ public class LogPlanTreeOptimizer
             this.lookup = lookup;
         }
 
+        public void reset() {
+            result.setLength(0);
+        }
+
         public String result()
         {
             return result.toString();
