@@ -202,6 +202,9 @@ public class ReorderJoins
                     transformedPlan,
                     identityAssignments(multiJoinNode.getOutputVariables()),
                     LOCAL);
+            minimalTreePrinter.reset();
+            transformedPlan.accept(minimalTreePrinter, 0);
+            log.info("%nAdded a top level projection for constraining outputs :%n%s", minimalTreePrinter.result());
         }
 
         if (!multiJoinNode.getAssignments().isEmpty()) {
@@ -212,6 +215,10 @@ public class ReorderJoins
                     multiJoinNode.getAssignments(),
                     LOCAL);
         }
+
+        minimalTreePrinter.reset();
+        transformedPlan.accept(minimalTreePrinter, 0);
+        log.info("%nFinal transformed plan :%n%s", minimalTreePrinter.result());
 
         return Result.ofPlanNode(transformedPlan);
     }
