@@ -317,21 +317,23 @@ public final class PlanConstraintsParser
                 case ']':
                     token = Token.RBRACKET;
                     break;
-                case 'P':
-                    token = Token.PARTITIONED;
-                    break;
-                case 'R':
-                    token = Token.REPLICATED;
-                    break;
                 default:
                     StringBuilder builder = new StringBuilder();
-                    while (c != ' ' && c != ')' && c != '(') {
+                    while (c != ' ' && c != ')' && c != '(' && c != '[' && c != ']') {
                         builder.append((char) c);
                         c = inputReader.read();
                     }
                     name = builder.toString();
                     if (!name.isEmpty()) {
-                        token = Token.NAME;
+                        if (name.equals("P")) {
+                            token = Token.PARTITIONED;
+                        }
+                        else if (name.equals("R")) {
+                            token = Token.REPLICATED;
+                        }
+                        else {
+                            token = Token.NAME;
+                        }
                         return token;
                     }
             }
