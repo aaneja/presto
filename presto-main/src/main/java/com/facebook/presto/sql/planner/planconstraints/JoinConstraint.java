@@ -90,6 +90,10 @@ public class JoinConstraint
             return matches(lookup, joinConstraint.getChildren().get(0), toCompare) ||
                     matches(lookup, joinConstraint.getChildren().get(1), toCompare);
         }
+        else if (constraint instanceof CardinalityConstraint) {
+            CardinalityConstraint cardinalityConstraint = (CardinalityConstraint) constraint;
+            return matches(lookup, cardinalityConstraint.getNode(), toCompare);
+        }
         else if (constraint instanceof RelationConstraint) {
             RelationConstraint relationConstraint = (RelationConstraint) constraint;
             if (toCompare instanceof JoinNode) {

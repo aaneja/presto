@@ -13,9 +13,11 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
+import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.plan.JoinDistributionType;
-import com.google.common.annotations.VisibleForTesting;
+import com.facebook.presto.spi.plan.PlanNode;
+import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.google.common.collect.ImmutableList;
 
 import java.io.IOException;
@@ -26,11 +28,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static com.facebook.presto.operator.scalar.MathFunctions.round;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
 import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
+import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.CARD;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.JOIN;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -43,7 +47,6 @@ public final class PlanConstraintsParser
 
     private PlanConstraintsParser() {}
 
-    @VisibleForTesting
     public static List<PlanConstraint> parse(Optional<String> query)
     {
         if (!query.isPresent() || query.get().isEmpty()) {
@@ -69,6 +72,38 @@ public final class PlanConstraintsParser
         catch (IOException e) {
             throw new PrestoException(GENERIC_USER_ERROR, "Invalid join constraint");
         }
+    }
+
+    public static Optional<PlanNodeStatsEstimate> getStatsEstimateFromPlanConstraints(List<CardinalityConstraint> cardinalityConstraints,
+            PlanNode planNode,
+            PlanNodeStatsEstimate statsEstimate,
+            Lookup lookup)
+    {
+        Optional<PlanNodeStatsEstimate> newStatsEstimate = Optional.empty();
+
+        Optional<Long> cardinality = getCardinality(cardinalityConstraints, planNode, lookup);
+        if (cardinality.isPresent()) {
+            double cardinalityAsDouble = cardinality.get().doubleValue();
+            double factor = cardinalityAsDouble / statsEstimate.getOutputRowCount();
+            double totalSize = round(factor * statsEstimate.getOutputSizeInBytes(), 0);
+            PlanNodeStatsEstimate.Builder builder = PlanNodeStatsEstimate.buildFrom(statsEstimate);
+            builder.setOutputRowCount(cardinalityAsDouble);
+            builder.setTotalSize(totalSize);
+            builder.setConfident(true);
+            newStatsEstimate = Optional.of(builder.build());
+        }
+
+        return newStatsEstimate;
+    }
+
+    private static Optional<Long> getCardinality(List<CardinalityConstraint> cardinalityConstraints, PlanNode planNode, Lookup lookup)
+    {
+        for (CardinalityConstraint constraint : cardinalityConstraints) {
+            if (matches(lookup, constraint, planNode)) {
+                return Optional.of(constraint.getCardinalityEstimate().getCardinality());
+            }
+        }
+        return Optional.empty();
     }
 
     private static List<PlanConstraint> parse(String constraintsString)
