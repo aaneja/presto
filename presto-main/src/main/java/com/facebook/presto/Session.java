@@ -27,6 +27,7 @@ import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.function.SqlFunctionId;
 import com.facebook.presto.spi.function.SqlInvokedFunction;
+import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.spi.security.AccessControlContext;
@@ -36,8 +37,10 @@ import com.facebook.presto.spi.session.ResourceEstimates;
 import com.facebook.presto.spi.session.SessionPropertyConfigurationManager.SystemSessionPropertyConfiguration;
 import com.facebook.presto.spi.tracing.Tracer;
 import com.facebook.presto.sql.analyzer.CTEInformationCollector;
+import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.optimizations.OptimizerInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerResultCollector;
+import com.facebook.presto.sql.planner.planconstraints.CardinalityConstraint;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableList;
@@ -69,10 +72,12 @@ import static com.facebook.presto.SystemSessionProperties.warnOnCommonNanPattern
 import static com.facebook.presto.spi.ConnectorId.createInformationSchemaConnectorId;
 import static com.facebook.presto.spi.ConnectorId.createSystemTablesConnectorId;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.getStatsEstimateFromPlanConstraints;
 import static com.facebook.presto.util.Failures.checkCondition;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
 public final class Session
@@ -365,6 +370,16 @@ public final class Session
     public List<PlanConstraint> getPlanConstraints()
     {
         return planConstraints;
+    }
+
+    public Optional<PlanNodeStatsEstimate> getStatsFromPlanConstraints(PlanNode planNode, PlanNodeStatsEstimate statsEstimate, Lookup lookup)
+    {
+        return getStatsEstimateFromPlanConstraints(planConstraints.stream()
+                .filter(CardinalityConstraint.class::isInstance)
+                .map(CardinalityConstraint.class::cast)
+                .collect(toImmutableList()),
+                planNode,
+                statsEstimate, lookup);
     }
 
     public Session beginTransactionId(TransactionId transactionId, TransactionManager transactionManager, AccessControl accessControl)

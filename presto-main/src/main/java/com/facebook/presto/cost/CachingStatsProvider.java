@@ -81,6 +81,7 @@ public final class CachingStatsProvider
             }
 
             stats = statsCalculator.calculateStats(node, this, lookup, session, types);
+            stats = session.getStatsFromPlanConstraints(node, stats, lookup).orElse(stats);
             verify(cache.put(node, stats) == null, "Stats already set");
             session.getPlanNodeStatsMap().put(node.getId(), stats);
             return stats;
@@ -104,7 +105,9 @@ public final class CachingStatsProvider
             return stats.get();
         }
 
-        PlanNodeStatsEstimate groupStats = statsCalculator.calculateStats(memo.getNode(group), this, lookup, session, types);
+        PlanNode node = memo.getNode(group);
+        PlanNodeStatsEstimate groupStats = statsCalculator.calculateStats(node, this, lookup, session, types);
+        groupStats = session.getStatsFromPlanConstraints(node, groupStats, lookup).orElse(groupStats);
         verify(!memo.getStats(group).isPresent(), "Group stats already set");
         memo.storeStats(group, groupStats);
         return groupStats;
