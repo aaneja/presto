@@ -436,6 +436,9 @@ public class ReorderJoins
                 matched = getSourceNode(matched.getOutputVariables(), matched);
                 return matched;
             }
+            else if (constraint instanceof CardinalityConstraint) {
+                return buildConstrainedJoin(((CardinalityConstraint) constraint).getNode(), sources);
+            }
             throw new IllegalStateException(String.format("Found a constraint node that cannot be involved in building join trees: %s", constraint));
         }
 
