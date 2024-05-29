@@ -43,6 +43,7 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.LogPlanTreeOptimizer;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.planconstraints.CardinalityConstraint;
 import com.facebook.presto.sql.planner.planconstraints.JoinConstraint;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.facebook.presto.sql.planner.planconstraints.RelationConstraint;
@@ -299,6 +300,10 @@ public class ReorderJoins
 
             Map<Set<PlanNode>, PlanNode> matchingConstraints = new HashMap<>();
             for (PlanConstraint planConstraint : planConstraints) {
+                if (!(planConstraint instanceof JoinConstraint)) {
+                    continue;
+                }
+
                 LinkedHashSet<PlanNode> remainingSources = new LinkedHashSet<>(allSources);
                 try {
                     PlanNode candidateNode = buildConstrainedJoin(planConstraint, remainingSources);
