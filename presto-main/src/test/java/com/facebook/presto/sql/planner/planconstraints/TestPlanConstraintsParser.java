@@ -114,6 +114,26 @@ public class TestPlanConstraintsParser
                                 Optional.of(PARTITIONED),
                                 ImmutableList.of(new RelationConstraint("B"), new RelationConstraint("C"))),
                         new RelationConstraint("D"))));
+
+        List<PlanConstraint> constraint = parse(Optional.of(constraintsMarkerStart + " join (aka_name, (cast_info, (company_name, (movie_companies, ((title, role_type), name))))) " + constraintsMarkerEnd));
+        assertEquals(constraint.size(), 1);
+        assertEquals(constraint.get(0), new JoinConstraint(INNER,
+                Optional.empty(),
+                ImmutableList.of(new RelationConstraint("AKA_NAME"),
+                        new JoinConstraint(INNER,
+                                Optional.empty(),
+                                ImmutableList.of(new RelationConstraint("CAST_INFO"),
+                                        new JoinConstraint(INNER,
+                                                Optional.empty(),
+                                                ImmutableList.of(new RelationConstraint("COMPANY_NAME"),
+                                                        new JoinConstraint(INNER,
+                                                                Optional.empty(),
+                                                                ImmutableList.of(new RelationConstraint("MOVIE_COMPANIES"),
+                                                                        new JoinConstraint(INNER,
+                                                                                Optional.empty(),
+                                                                                ImmutableList.of(new JoinConstraint(INNER, Optional.empty(),
+                                                                                                ImmutableList.of(new RelationConstraint("TITLE"), new RelationConstraint("ROLE_TYPE"))),
+                                                                                        new RelationConstraint("NAME"))))))))))));
     }
 
     @Test
