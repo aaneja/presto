@@ -52,6 +52,7 @@ public class MetastoreClientConfig
     private int partitionCacheColumnCountLimit = 500;
     private HiveMetastoreAuthenticationType hiveMetastoreAuthenticationType = HiveMetastoreAuthenticationType.NONE;
     private boolean deleteFilesOnTableDrop;
+    private int partitionCommitBatchSize = 1000;
 
     public HostAndPort getMetastoreSocksProxy()
     {
@@ -301,6 +302,19 @@ public class MetastoreClientConfig
     public MetastoreClientConfig setDeleteFilesOnTableDrop(boolean deleteFilesOnTableDrop)
     {
         this.deleteFilesOnTableDrop = deleteFilesOnTableDrop;
+        return this;
+    }
+
+    public int getPartitionCommitBatchSize()
+    {
+        return partitionCommitBatchSize;
+    }
+
+    @Min(1)
+    @Config("hive.metastore-partition-commit-batch-size")
+    public MetastoreClientConfig setPartitionCommitBatchSize(int partitionCommitBatchSize)
+    {
+        this.partitionCommitBatchSize = partitionCommitBatchSize;
         return this;
     }
 }

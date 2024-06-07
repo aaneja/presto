@@ -182,6 +182,7 @@ public class ThriftHiveMetastore
     private final boolean impersonationEnabled;
     private final boolean isMetastoreAuthenticationEnabled;
     private final boolean deleteFilesOnTableDrop;
+    private final int partitionCommitBatchSize;
 
     @Inject
     public ThriftHiveMetastore(HiveCluster hiveCluster, MetastoreClientConfig config, HdfsEnvironment hdfsEnvironment)
@@ -193,7 +194,8 @@ public class ThriftHiveMetastore
                 hdfsEnvironment,
                 requireNonNull(config, "config is null").isMetastoreImpersonationEnabled(),
                 requireNonNull(config, "config is null").isDeleteFilesOnTableDrop(),
-                requireNonNull(config, "config is null").getHiveMetastoreAuthenticationType() != HiveMetastoreAuthenticationType.NONE);
+                requireNonNull(config, "config is null").getHiveMetastoreAuthenticationType() != HiveMetastoreAuthenticationType.NONE,
+                requireNonNull(config, "config is null").getPartitionCommitBatchSize());
     }
 
     public ThriftHiveMetastore(
@@ -203,7 +205,8 @@ public class ThriftHiveMetastore
             HdfsEnvironment hdfsEnvironment,
             boolean impersonationEnabled,
             boolean deleteFilesOnTableDrop,
-            boolean isMetastoreAuthenticationEnabled)
+            boolean isMetastoreAuthenticationEnabled,
+            int partitionCommitBatchSize)
     {
         this.clientProvider = requireNonNull(hiveCluster, "hiveCluster is null");
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
@@ -212,6 +215,7 @@ public class ThriftHiveMetastore
         this.impersonationEnabled = impersonationEnabled;
         this.deleteFilesOnTableDrop = deleteFilesOnTableDrop;
         this.isMetastoreAuthenticationEnabled = isMetastoreAuthenticationEnabled;
+        this.partitionCommitBatchSize = partitionCommitBatchSize;
     }
 
     private static boolean isPrestoView(Table table)
@@ -1767,6 +1771,11 @@ public class ThriftHiveMetastore
         catch (Exception e) {
             throw propagate(e);
         }
+    }
+
+    @Override
+    public int getPartitionCommitBatchSize() {
+        return partitionCommitBatchSize;
     }
 
     private static class WaitingForLockException

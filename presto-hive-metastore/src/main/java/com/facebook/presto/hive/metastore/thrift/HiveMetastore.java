@@ -196,4 +196,8 @@ public interface HiveMetastore
     MetastoreOperationResult dropConstraint(MetastoreContext metastoreContext, String databaseName, String tableName, String constraintName);
 
     MetastoreOperationResult addConstraint(MetastoreContext metastoreContext, String databaseName, String tableName, TableConstraint<String> tableConstraint);
+
+    default int getPartitionCommitBatchSize() {
+        return 10;
+    }
 }

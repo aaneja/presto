@@ -49,7 +49,8 @@ public class TestMetastoreClientConfig
                 .setPartitionCacheValidationPercentage(0)
                 .setPartitionCacheColumnCountLimit(500)
                 .setHiveMetastoreAuthenticationType(HiveMetastoreAuthenticationType.NONE)
-                .setDeleteFilesOnTableDrop(false));
+                .setDeleteFilesOnTableDrop(false)
+                .setPartitionCommitBatchSize(1000));
     }
 
     @Test
@@ -96,7 +97,8 @@ public class TestMetastoreClientConfig
                 .setPartitionCacheValidationPercentage(60.0)
                 .setPartitionCacheColumnCountLimit(50)
                 .setHiveMetastoreAuthenticationType(HiveMetastoreAuthenticationType.KERBEROS)
-                .setDeleteFilesOnTableDrop(true);
+                .setDeleteFilesOnTableDrop(true)
+                .setPartitionCommitBatchSize(100);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }
