@@ -20,24 +20,34 @@ import com.facebook.presto.spi.analyzer.QueryAnalysis;
 import com.facebook.presto.spi.function.FunctionKind;
 import com.facebook.presto.sql.tree.Explain;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Multimap;
 
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static java.util.Objects.requireNonNull;
+
 public class BuiltInQueryAnalysis
         implements QueryAnalysis
 {
     private final Analysis analysis;
+    private final Multimap<String, String> aliases;
 
-    public BuiltInQueryAnalysis(Analysis analysis)
+    public BuiltInQueryAnalysis(Analysis analysis, Multimap<String, String> aliases)
     {
         this.analysis = analysis;
+        this.aliases = requireNonNull(aliases, "aliases is null");
     }
 
     public Analysis getAnalysis()
     {
         return analysis;
+    }
+
+    public Multimap<String, String> getAliases()
+    {
+        return aliases;
     }
 
     @Override

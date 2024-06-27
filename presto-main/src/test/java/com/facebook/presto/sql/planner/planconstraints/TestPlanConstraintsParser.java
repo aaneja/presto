@@ -115,7 +115,7 @@ public class TestPlanConstraintsParser
                                 ImmutableList.of(new RelationConstraint("B"), new RelationConstraint("C"))),
                         new RelationConstraint("D"))));
 
-        List<PlanConstraint> constraint = parse(Optional.of(constraintsMarkerStart + " join (aka_name, (cast_info, (company_name, (movie_companies, ((title, role_type), name))))) " + constraintsMarkerEnd));
+        List<PlanConstraint> constraint = parse(Optional.of(constraintsMarkerStart + " join (aka_name (cast_info (company_name (movie_companies ((title role_type) name))))) " + constraintsMarkerEnd));
         assertEquals(constraint.size(), 1);
         assertEquals(constraint.get(0), new JoinConstraint(INNER,
                 Optional.empty(),

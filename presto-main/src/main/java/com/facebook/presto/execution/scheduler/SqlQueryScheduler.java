@@ -47,6 +47,7 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.planner.sanity.PlanChecker;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -145,6 +146,7 @@ public class SqlQueryScheduler
     private final AtomicBoolean scheduling = new AtomicBoolean();
 
     private final PartialResultQueryTaskTracker partialResultQueryTaskTracker;
+    private final PlanConstraintsHolder planConstraintsHolder;
 
     public static SqlQueryScheduler createSqlQueryScheduler(
             LocationFactory locationFactory,
@@ -167,7 +169,8 @@ public class SqlQueryScheduler
             PlanChecker planChecker,
             Metadata metadata,
             SqlParser sqlParser,
-            PartialResultQueryManager partialResultQueryManager)
+            PartialResultQueryManager partialResultQueryManager,
+            PlanConstraintsHolder planConstraintsHolder)
     {
         SqlQueryScheduler sqlQueryScheduler = new SqlQueryScheduler(
                 locationFactory,
@@ -190,7 +193,8 @@ public class SqlQueryScheduler
                 planChecker,
                 metadata,
                 sqlParser,
-                partialResultQueryManager);
+                partialResultQueryManager,
+                planConstraintsHolder);
         sqlQueryScheduler.initialize();
         return sqlQueryScheduler;
     }
@@ -216,7 +220,8 @@ public class SqlQueryScheduler
             PlanChecker planChecker,
             Metadata metadata,
             SqlParser sqlParser,
-            PartialResultQueryManager partialResultQueryManager)
+            PartialResultQueryManager partialResultQueryManager,
+            PlanConstraintsHolder planConstraintsHolder)
     {
         this.locationFactory = requireNonNull(locationFactory, "locationFactory is null");
         this.executionPolicy = requireNonNull(executionPolicy, "schedulerPolicyFactory is null");
@@ -257,6 +262,7 @@ public class SqlQueryScheduler
 
         this.maxConcurrentMaterializations = getMaxConcurrentMaterializations(session);
         this.partialResultQueryTaskTracker = new PartialResultQueryTaskTracker(partialResultQueryManager, getPartialResultsCompletionRatioThreshold(session), getPartialResultsMaxExecutionTimeMultiplier(session), warningCollector);
+        this.planConstraintsHolder = planConstraintsHolder;
     }
 
     // this is a separate method to ensure that the `this` reference is not leaked during construction
@@ -607,7 +613,7 @@ public class SqlQueryScheduler
         PlanFragment fragment = subPlan.getFragment();
         PlanNode newRoot = fragment.getRoot();
         for (PlanOptimizer optimizer : runtimePlanOptimizers) {
-            newRoot = optimizer.optimize(newRoot, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector).getPlanNode();
+            newRoot = optimizer.optimize(newRoot, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, planConstraintsHolder).getPlanNode();
         }
         if (newRoot != fragment.getRoot()) {
             Optional<StatsAndCosts> estimatedStatsAndCosts = fragment.getStatsAndCosts();

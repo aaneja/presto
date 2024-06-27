@@ -31,6 +31,7 @@ import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
@@ -108,7 +109,7 @@ public class MergePartialAggregationsWithFilter
     }
 
     @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector, PlanConstraintsHolder planConstraintsHolder)
     {
         if (isEnabled(session)) {
             Rewriter rewriter = new Rewriter(session, variableAllocator, idAllocator, functionAndTypeManager);

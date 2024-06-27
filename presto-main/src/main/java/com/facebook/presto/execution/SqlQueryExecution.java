@@ -49,6 +49,7 @@ import com.facebook.presto.spi.resourceGroups.ResourceGroupQueryLimits;
 import com.facebook.presto.split.CloseableSplitSourceProvider;
 import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.sql.Optimizer;
+import com.facebook.presto.sql.analyzer.BuiltInQueryAnalysis;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.CanonicalPlanWithInfo;
 import com.facebook.presto.sql.planner.InputExtractor;
@@ -61,6 +62,8 @@ import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.planner.SplitSourceFactory;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.sql.planner.sanity.PlanChecker;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -140,6 +143,7 @@ public class SqlQueryExecution
     private final PlanCanonicalInfoProvider planCanonicalInfoProvider;
     private final QueryAnalysis queryAnalysis;
     private final AnalyzerContext analyzerContext;
+    private final AtomicReference<PlanConstraintsHolder> planConstraintsHolder = new AtomicReference<>();
 
     private SqlQueryExecution(
             QueryAnalyzer queryAnalyzer,
@@ -202,6 +206,9 @@ public class SqlQueryExecution
                     getQueryAnalyzerTimeout(getSession()))) {
                 this.queryAnalysis = queryAnalyzer.analyze(analyzerContext, preparedQuery);
             }
+            this.planConstraintsHolder.set(new PlanConstraintsHolder(
+                    PlanConstraintsParser.parse(Optional.of(stateMachine.getBasicQueryInfo(Optional.empty()).getQuery())),
+                    ((BuiltInQueryAnalysis) queryAnalysis).getAliases()));
 
             stateMachine.setUpdateType(queryAnalysis.getUpdateType());
             stateMachine.setExpandedQuery(queryAnalysis.getExpandedQuery());
@@ -550,7 +557,8 @@ public class SqlQueryExecution
                     stateMachine.getWarningCollector(),
                     statsCalculator,
                     costCalculator,
-                    false);
+                    false,
+                    planConstraintsHolder.get());
 
             Plan plan = getSession().getRuntimeStats().profileNanos(
                     OPTIMIZER_TIME_NANOS,
@@ -645,7 +653,8 @@ public class SqlQueryExecution
                 planChecker,
                 metadata,
                 sqlParser,
-                partialResultQueryManager);
+                partialResultQueryManager,
+                planConstraintsHolder.get());
 
         queryScheduler.set(scheduler);
 

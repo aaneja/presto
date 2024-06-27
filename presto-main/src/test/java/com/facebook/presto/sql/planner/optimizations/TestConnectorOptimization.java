@@ -65,6 +65,7 @@ import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTAN
 import static com.facebook.presto.expressions.LogicalRowExpressions.and;
 import static com.facebook.presto.expressions.LogicalRowExpressions.or;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -285,7 +286,7 @@ public class TestConnectorOptimization
     private static PlanNode optimize(PlanNode plan, Map<ConnectorId, Set<ConnectorPlanOptimizer>> optimizers)
     {
         ApplyConnectorOptimization optimizer = new ApplyConnectorOptimization(() -> optimizers);
-        return optimizer.optimize(plan, TEST_SESSION, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP).getPlanNode();
+        return optimizer.optimize(plan, TEST_SESSION, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP, EMPTY_PLAN_CONSTRAINTS_HOLDER).getPlanNode();
     }
 
     private static ConnectorPlanOptimizer filterPushdown()

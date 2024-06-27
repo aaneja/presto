@@ -56,6 +56,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.output;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
 import static com.facebook.presto.sql.planner.optimizations.PredicatePushDown.createDynamicFilterExpression;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -246,7 +247,7 @@ public class TestRemoveUnsupportedDynamicFilters
         return getQueryRunner().inTransaction(session -> {
             // metadata.getCatalogHandle() registers the catalog for the transaction
             session.getCatalog().ifPresent(catalog -> metadata.getCatalogHandle(session, catalog));
-            PlanNode rewrittenPlan = new RemoveUnsupportedDynamicFilters(metadata.getFunctionAndTypeManager()).optimize(root, session, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP).getPlanNode();
+            PlanNode rewrittenPlan = new RemoveUnsupportedDynamicFilters(metadata.getFunctionAndTypeManager()).optimize(root, session, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP, EMPTY_PLAN_CONSTRAINTS_HOLDER).getPlanNode();
             new DynamicFiltersChecker().validate(rewrittenPlan, session, metadata, new SqlParser(), TypeProvider.empty(), WarningCollector.NOOP);
             return rewrittenPlan;
         });

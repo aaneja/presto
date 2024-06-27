@@ -74,6 +74,7 @@ import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TopNRowNumberNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.base.Preconditions;
@@ -124,7 +125,7 @@ public class UnaliasSymbolReferences
     }
 
     @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector, PlanConstraintsHolder planConstraintsHolder)
     {
         requireNonNull(plan, "plan is null");
         requireNonNull(session, "session is null");

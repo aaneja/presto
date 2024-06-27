@@ -37,6 +37,7 @@ import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.rule.RowExpressionRewriteRuleSet;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizerResult;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
@@ -100,13 +101,13 @@ public class IterativeOptimizer
     }
 
     @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector, PlanConstraintsHolder planConstraintsHolder)
     {
         // only disable new rules if we have legacy rules to fall back to
         if (!SystemSessionProperties.isNewOptimizerEnabled(session) && !legacyRules.isEmpty()) {
             boolean planChanged = false;
             for (PlanOptimizer optimizer : legacyRules) {
-                PlanOptimizerResult planOptimizerResult = optimizer.optimize(plan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
+                PlanOptimizerResult planOptimizerResult = optimizer.optimize(plan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, planConstraintsHolder);
                 plan = planOptimizerResult.getPlanNode();
                 planChanged = planChanged || planOptimizerResult.isOptimizerTriggered();
             }
@@ -133,7 +134,7 @@ public class IterativeOptimizer
                 session,
                 TypeProvider.viewOf(variableAllocator.getVariables()));
         CostProvider costProvider = new CachingCostProvider(costCalculator, statsProvider, Optional.of(memo), session);
-        Context context = new Context(memo, lookup, idAllocator, variableAllocator, System.nanoTime(), timeout.toMillis(), session, warningCollector, costProvider, statsProvider, metadata, types);
+        Context context = new Context(memo, lookup, idAllocator, variableAllocator, System.nanoTime(), timeout.toMillis(), session, warningCollector, costProvider, statsProvider, metadata, types, planConstraintsHolder);
         boolean planChanged = exploreGroup(memo.getRootGroup(), context, matcher);
         context.collectOptimizerInformation();
         if (!planChanged) {
@@ -404,6 +405,7 @@ public class IterativeOptimizer
         private final Set<String> rulesApplicable;
         private final Metadata metadata;
         private final TypeProvider types;
+        private final PlanConstraintsHolder planConstraintsHolder;
 
         public Context(
                 Memo memo,
@@ -417,7 +419,8 @@ public class IterativeOptimizer
                 CostProvider costProvider,
                 StatsProvider statsProvider,
                 Metadata metadata,
-                TypeProvider types)
+                TypeProvider types,
+                PlanConstraintsHolder planConstraintsHolder)
         {
             checkArgument(timeoutInMilliseconds >= 0, "Timeout has to be a non-negative number [milliseconds]");
 
@@ -435,6 +438,7 @@ public class IterativeOptimizer
             this.types = types;
             this.rulesTriggered = new HashSet<>();
             this.rulesApplicable = new HashSet<>();
+            this.planConstraintsHolder = planConstraintsHolder;
         }
 
         public void checkTimeoutNotExhausted()
