@@ -26,6 +26,7 @@ import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.LogicalPlanner;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.google.inject.Inject;
 
 import java.util.Optional;
@@ -91,7 +92,7 @@ public class BuiltInQueryAnalyzer
                 Optional.of(metadataExtractorExecutor));
 
         Analysis analysis = analyzer.analyzeSemantic(((BuiltInQueryPreparer.BuiltInPreparedQuery) preparedQuery).getStatement(), false);
-        return new BuiltInQueryAnalysis(analysis);
+        return new BuiltInQueryAnalysis(analysis, PlanConstraintsParser.extractRelationAliases(builtInPreparedQuery.getStatement(), analysis));
     }
 
     @Override

@@ -17,8 +17,17 @@ import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.PlanNode;
+import com.facebook.presto.sql.analyzer.Analysis;
+import com.facebook.presto.sql.analyzer.Analysis.NamedQuery;
 import com.facebook.presto.sql.planner.iterative.Lookup;
+import com.facebook.presto.sql.tree.AliasedRelation;
+import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
+import com.facebook.presto.sql.tree.Query;
+import com.facebook.presto.sql.tree.Statement;
+import com.facebook.presto.sql.tree.Table;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Multimap;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -39,6 +48,7 @@ import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsPar
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.JOIN;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
 
 public final class PlanConstraintsParser
 {
@@ -94,6 +104,13 @@ public final class PlanConstraintsParser
         }
 
         return newStatsEstimate;
+    }
+
+    public static Multimap<String, String> extractRelationAliases(Statement statement, Analysis analysis)
+    {
+        AliasExtractor aliasExtractor = new AliasExtractor(analysis);
+        aliasExtractor.process(statement, "");
+        return aliasExtractor.getAliases();
     }
 
     private static Optional<Long> getCardinality(List<CardinalityConstraint> cardinalityConstraints, PlanNode planNode, Lookup lookup)
@@ -411,6 +428,72 @@ public final class PlanConstraintsParser
         public ConstraintType getConstraintType()
         {
             return constraintType;
+        }
+    }
+
+    private static class AliasExtractor
+            extends DefaultTraversalVisitor<Void, String>
+    {
+        private final Analysis analysis;
+        Multimap<String, String> aliasMap;
+
+        AliasExtractor(Analysis analysis)
+        {
+            requireNonNull(analysis, "analysis is null");
+            this.analysis = analysis;
+            aliasMap = HashMultimap.create();
+        }
+
+        public Multimap<String, String> getAliases()
+        {
+            return aliasMap;
+        }
+
+        @Override
+        protected Void visitQuery(Query node, String context)
+        {
+            node.getWith().ifPresent(with -> process(with, context));
+
+            process(node.getQueryBody(), context);
+
+            node.getOrderBy().ifPresent(orderBy -> process(orderBy, context));
+
+            return null;
+        }
+
+        @Override
+        protected Void visitAliasedRelation(AliasedRelation node, String context)
+        {
+            requireNonNull(node.getAlias(), "alias is null");
+
+            String aliasName = node.getAlias().getValue();
+            if (aliasMap.containsKey(context)) {
+                aliasMap.put(context, aliasName);
+            }
+            else {
+                aliasMap.put(aliasName, aliasName);
+            }
+
+            return process(node.getRelation(), aliasName);
+        }
+
+        @Override
+        protected Void visitTable(Table node, String context)
+        {
+            NamedQuery namedQuery = analysis.getNamedQuery(node);
+
+            if (namedQuery != null) {
+                return process(namedQuery.getQuery(), context);
+            }
+
+            String tableName = node.getName().toString();
+            if (aliasMap.containsKey(context)) {
+                aliasMap.put(context, tableName);
+            }
+            else {
+                aliasMap.put(tableName, tableName);
+            }
+            return null;
         }
     }
 }

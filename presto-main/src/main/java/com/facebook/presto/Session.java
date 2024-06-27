@@ -113,8 +113,6 @@ public final class Session
     private final CTEInformationCollector cteInformationCollector = new CTEInformationCollector();
     private final Map<PlanNodeId, PlanNodeStatsEstimate> planNodeStatsMap = new HashMap<>();
     private final Map<PlanNodeId, PlanCostEstimate> planNodeCostMap = new HashMap<>();
-
-    //VIVEK TODO - make this immutable?
     private final List<PlanConstraint> planConstraints;
 
     public Session(

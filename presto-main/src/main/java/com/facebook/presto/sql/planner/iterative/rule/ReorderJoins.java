@@ -43,7 +43,6 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.LogPlanTreeOptimizer;
 import com.facebook.presto.sql.planner.plan.JoinNode;
-import com.facebook.presto.sql.planner.planconstraints.CardinalityConstraint;
 import com.facebook.presto.sql.planner.planconstraints.JoinConstraint;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.facebook.presto.sql.planner.planconstraints.RelationConstraint;
@@ -434,9 +433,7 @@ public class ReorderJoins
                 matched = getSourceNode(matched.getOutputVariables(), matched);
                 return matched;
             }
-            else if (constraint instanceof CardinalityConstraint) {
-                return buildConstrainedJoin(((CardinalityConstraint) constraint).getNode(), sources);
-            }
+
             throw new IllegalStateException(String.format("Found a constraint node that cannot be involved in building join trees: %s", constraint));
         }
 

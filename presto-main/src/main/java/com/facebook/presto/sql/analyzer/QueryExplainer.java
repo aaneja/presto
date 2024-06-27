@@ -57,6 +57,7 @@ import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizDi
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizLogicalPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonLogicalPlan;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -225,7 +226,9 @@ public class QueryExplainer
                 warningCollector,
                 statsCalculator,
                 costCalculator,
-                true);
+                true,
+                //Vivek TODO
+                EMPTY_PLAN_CONSTRAINTS_HOLDER);
 
         return session.getRuntimeStats().profileNanos(
                 OPTIMIZER_TIME_NANOS,
