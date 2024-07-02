@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
+import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.tree.Statement;
 import com.google.common.collect.ImmutableList;
 import org.testng.annotations.Test;
 
@@ -230,5 +232,18 @@ public class TestPlanConstraintsParser
                                         new RelationConstraint("D"),
                                         new RelationConstraint("E"))))),
                 new CardinalityEstimate(10)));
+    }
+
+    @Test
+    public void TestAliasLocationVisitor() {
+        String query = "\n" +
+                "with common as (select a1,b1 from t1)\n" +
+                "select 1 from common x join common y on x.a1=y.a1\n" +
+                "where x.b1 < 1000 and y.b1 > 0";
+        Statement statement = new SqlParser().createStatement(query);
+        PlanConstraintsParser.AliasLocationVisitor visitor = new PlanConstraintsParser.AliasLocationVisitor();
+        statement.accept(visitor, null);
+        visitor.getSourceLocationAliasMap().forEach((k, v) -> System.out.printf("[%d,%d] : %s%n", k.getLine(), k.getColumn(), v));
+
     }
 }

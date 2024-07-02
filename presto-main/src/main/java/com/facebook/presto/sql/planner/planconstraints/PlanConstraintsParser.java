@@ -15,27 +15,30 @@ package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.PlanNode;
-import com.facebook.presto.sql.analyzer.Analysis;
-import com.facebook.presto.sql.analyzer.Analysis.NamedQuery;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.Query;
+import com.facebook.presto.sql.tree.Node;
+import com.facebook.presto.sql.tree.NodeLocation;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.sql.tree.Table;
-import com.google.common.collect.HashMultimap;
+import com.facebook.presto.sql.tree.WithQuery;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Multimap;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 
 import static com.facebook.presto.operator.scalar.MathFunctions.round;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
@@ -106,17 +109,18 @@ public final class PlanConstraintsParser
         return newStatsEstimate;
     }
 
-    public static Multimap<String, String> extractRelationAliases(Statement statement, Analysis analysis)
+    public static NavigableMap<SourceLocation, String> extractRelationAliases(Statement statement)
     {
-        AliasExtractor aliasExtractor = new AliasExtractor(analysis);
-        aliasExtractor.process(statement, "");
-        return aliasExtractor.getAliases();
+        AliasLocationVisitor aliasExtractor = new AliasLocationVisitor();
+        aliasExtractor.process(statement);
+        return aliasExtractor.getSourceLocationAliasMap();
     }
 
     private static Optional<Long> getCardinality(List<CardinalityConstraint> cardinalityConstraints, PlanNode planNode, Lookup lookup)
     {
         for (CardinalityConstraint constraint : cardinalityConstraints) {
-            if (matches(lookup, constraint, planNode)) {
+            // TODO : Fix me, We need to plumb the source location to alias map
+            if (matches(lookup, constraint, planNode, new TreeMap<>())) {
                 return Optional.of(constraint.getCardinalityEstimate().getCardinality());
             }
         }
@@ -431,69 +435,47 @@ public final class PlanConstraintsParser
         }
     }
 
-    private static class AliasExtractor
-            extends DefaultTraversalVisitor<Void, String>
-    {
-        private final Analysis analysis;
-        Multimap<String, String> aliasMap;
+    @VisibleForTesting
+    public static class  AliasLocationVisitor extends DefaultTraversalVisitor<Void, Void> {
+        TreeMap<SourceLocation, String> sourceLocationAliasMap = new TreeMap<>();
 
-        AliasExtractor(Analysis analysis)
+        private void recordAlias(Node node, String alias)
         {
-            requireNonNull(analysis, "analysis is null");
-            this.analysis = analysis;
-            aliasMap = HashMultimap.create();
+            Preconditions.checkState(node.getLocation().isPresent(), "Node location is missing for node %s", node);
+            NodeLocation nodeLocation = node.getLocation().get();
+            SourceLocation asSourceLocation = new SourceLocation(nodeLocation.getLineNumber(), nodeLocation.getColumnNumber());
+            if (!sourceLocationAliasMap.containsKey(asSourceLocation)) {
+                sourceLocationAliasMap.put(asSourceLocation, alias);
+            }
         }
 
-        public Multimap<String, String> getAliases()
+        public TreeMap<SourceLocation, String> getSourceLocationAliasMap()
         {
-            return aliasMap;
-        }
-
-        @Override
-        protected Void visitQuery(Query node, String context)
-        {
-            node.getWith().ifPresent(with -> process(with, context));
-
-            process(node.getQueryBody(), context);
-
-            node.getOrderBy().ifPresent(orderBy -> process(orderBy, context));
-
-            return null;
+            return sourceLocationAliasMap;
         }
 
         @Override
-        protected Void visitAliasedRelation(AliasedRelation node, String context)
+        protected Void visitAliasedRelation(AliasedRelation node, Void context)
         {
-            requireNonNull(node.getAlias(), "alias is null");
+            String alias = node.getAlias().toString();
+            recordAlias(node, alias);
 
-            String aliasName = node.getAlias().getValue();
-            if (aliasMap.containsKey(context)) {
-                aliasMap.put(context, aliasName);
-            }
-            else {
-                aliasMap.put(aliasName, aliasName);
-            }
-
-            return process(node.getRelation(), aliasName);
+            return super.visitAliasedRelation(node,context);
         }
 
         @Override
-        protected Void visitTable(Table node, String context)
+        protected Void visitWithQuery(WithQuery node, Void context)
         {
-            NamedQuery namedQuery = analysis.getNamedQuery(node);
+            String alias = node.getName().toString();
+            recordAlias(node, alias);
+            return super.visitWithQuery(node, context);
+        }
 
-            if (namedQuery != null) {
-                return process(namedQuery.getQuery(), context);
-            }
-
-            String tableName = node.getName().toString();
-            if (aliasMap.containsKey(context)) {
-                aliasMap.put(context, tableName);
-            }
-            else {
-                aliasMap.put(tableName, tableName);
-            }
-            return null;
+        @Override
+        protected Void visitTable(Table node, Void context) {
+            String alias = node.getName().toString();
+            recordAlias(node, alias);
+            return super.visitTable(node, context);
         }
     }
 }

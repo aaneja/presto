@@ -28,6 +28,7 @@ import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
+import java.util.TreeMap;
 
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
@@ -71,21 +72,21 @@ public class TestJoinConstraint
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertTrue(matches(lookup, constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare, new TreeMap<>()));
 
         // Flipped order does not match
         constraint = new JoinConstraint(INNER,
                 Optional.empty(),
                 ImmutableList.of(new RelationConstraint("valuesB"), new RelationConstraint("valuesA")));
 
-        assertFalse(matches(lookup, constraint, toCompare));
+        assertFalse(matches(lookup, constraint, toCompare, new TreeMap<>()));
 
         // Distribution Type must match that of the constraint
         constraint = new JoinConstraint(INNER,
                 Optional.of(REPLICATED),
                 ImmutableList.of(new RelationConstraint("valuesA"), new RelationConstraint("valuesB")));
 
-        assertFalse(matches(lookup, constraint, toCompare));
+        assertFalse(matches(lookup, constraint, toCompare, new TreeMap<>()));
 
         toCompare = p.join(
                 INNER,
@@ -93,7 +94,7 @@ public class TestJoinConstraint
                 p.values(new PlanNodeId("valuesB")),
                 REPLICATED);
 
-        assertTrue(matches(lookup, constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare, new TreeMap<>()));
     }
 
     @Test
@@ -120,7 +121,7 @@ public class TestJoinConstraint
                         new JoinConstraint(INNER,
                                 Optional.empty(),
                                 ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
-        assertTrue(matches(lookup, constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare, new TreeMap<>()));
     }
 
     @Test
@@ -147,6 +148,6 @@ public class TestJoinConstraint
                         new JoinConstraint(INNER,
                                 Optional.empty(),
                                 ImmutableList.of(new RelationConstraint("valuesC"), new RelationConstraint("valuesD")))));
-        assertTrue(matches(lookup, constraint, toCompare));
+        assertTrue(matches(lookup, constraint, toCompare, new TreeMap<>()));
     }
 }

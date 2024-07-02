@@ -17,12 +17,11 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.drift.annotations.ThriftConstructor;
 import com.facebook.drift.annotations.ThriftField;
 import com.facebook.drift.annotations.ThriftStruct;
-import com.facebook.presto.spi.plan.FilterNode;
+import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.JoinType;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
-import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.sql.planner.iterative.GroupReference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
@@ -31,6 +30,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -61,7 +61,7 @@ public class JoinConstraint
         this.children = children;
     }
 
-    public static boolean matches(Lookup lookup, PlanConstraint constraint, PlanNode toCompare)
+    public static boolean matches(Lookup lookup, PlanConstraint constraint, PlanNode toCompare, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
     {
         if (toCompare instanceof GroupReference) {
             toCompare = lookup.resolve(toCompare);
@@ -77,48 +77,47 @@ public class JoinConstraint
                     return false;
                 }
                 // Current JoinNode matches, check the children
-                return matches(lookup, joinConstraint.getChildren().get(0), toMatch.getLeft()) &&
-                        matches(lookup, joinConstraint.getChildren().get(1), toMatch.getRight());
+                return matches(lookup, joinConstraint.getChildren().get(0), toMatch.getLeft(), sourceLocationAliasMap) &&
+                        matches(lookup, joinConstraint.getChildren().get(1), toMatch.getRight(), sourceLocationAliasMap);
             }
 
             // The current node, could be a Projection introduced during join reordering
             if (toCompare instanceof ProjectNode) {
-                return matches(lookup, constraint, ((ProjectNode) toCompare).getSource());
+                return matches(lookup, constraint, ((ProjectNode) toCompare).getSource(), sourceLocationAliasMap);
             }
 
             // The current node does not match as-is, check the children for a sub-graph match
-            return matches(lookup, joinConstraint.getChildren().get(0), toCompare) ||
-                    matches(lookup, joinConstraint.getChildren().get(1), toCompare);
+            return matches(lookup, joinConstraint.getChildren().get(0), toCompare, sourceLocationAliasMap) ||
+                    matches(lookup, joinConstraint.getChildren().get(1), toCompare, sourceLocationAliasMap);
         }
         else if (constraint instanceof CardinalityConstraint) {
             CardinalityConstraint cardinalityConstraint = (CardinalityConstraint) constraint;
-            return matches(lookup, cardinalityConstraint.getNode(), toCompare);
+            return matches(lookup, cardinalityConstraint.getNode(), toCompare, sourceLocationAliasMap);
         }
         else if (constraint instanceof RelationConstraint) {
             RelationConstraint relationConstraint = (RelationConstraint) constraint;
-            if (toCompare instanceof JoinNode) {
-                // Expected a terminating leaf node
-                return false;
-            }
-            // TODO : We need a canonical property that can identify the 'named' relation at this point, for now we assume a match
 
-            if (toCompare instanceof TableScanNode) {
-                TableScanNode tableScanNode = (TableScanNode) toCompare;
-                String tableHandle = tableScanNode.getTable().getConnectorHandle().toString();
-                String tableName = extractTableName(tableHandle);
-                LOG.info("Extracted [%s] from table handle : %s", tableName, tableHandle);
-                return relationConstraint.getName().equalsIgnoreCase(tableName);
-            }
-            if (toCompare instanceof FilterNode) {
-                return matches(lookup, constraint, ((FilterNode) toCompare).getSource());
+            if (toCompare.getSourceLocation().isPresent()) {
+                SourceLocation nodeLocation = toCompare.getSourceLocation().get();
+                String alias = findAlias(nodeLocation, sourceLocationAliasMap);
+                LOG.info("Resolved [%s][%d,%d] to alias : %s", toCompare.getClass().getSimpleName(), nodeLocation.getLine(), nodeLocation.getColumn(), alias);
+                return relationConstraint.getName().equalsIgnoreCase(alias);
             }
             else {
-                // Assuming id is that property for now
-                LOG.info("Found a node %s", toCompare.getId());
-                return relationConstraint.getName().equalsIgnoreCase(toCompare.getId().toString());
+                return false;
             }
         }
         return false;
+    }
+
+    private static String findAlias(SourceLocation nodeLocation, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
+    {
+        // Find the first entry that is greater than or equal to the node location
+        SourceLocation aliasStartLocation = sourceLocationAliasMap.floorKey(nodeLocation);
+        if (aliasStartLocation == null) {
+            return null;
+        }
+        return sourceLocationAliasMap.get(aliasStartLocation);
     }
 
     // TODO : Enhance this for other connectors as well, this is a hack at the moment

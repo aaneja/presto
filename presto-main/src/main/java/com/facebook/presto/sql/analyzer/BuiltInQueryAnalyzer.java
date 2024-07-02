@@ -92,7 +92,7 @@ public class BuiltInQueryAnalyzer
                 Optional.of(metadataExtractorExecutor));
 
         Analysis analysis = analyzer.analyzeSemantic(((BuiltInQueryPreparer.BuiltInPreparedQuery) preparedQuery).getStatement(), false);
-        return new BuiltInQueryAnalysis(analysis, PlanConstraintsParser.extractRelationAliases(builtInPreparedQuery.getStatement(), analysis));
+        return new BuiltInQueryAnalysis(analysis);
     }
 
     @Override

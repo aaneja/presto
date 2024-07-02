@@ -49,7 +49,7 @@ import com.facebook.presto.spi.resourceGroups.ResourceGroupQueryLimits;
 import com.facebook.presto.split.CloseableSplitSourceProvider;
 import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.sql.Optimizer;
-import com.facebook.presto.sql.analyzer.BuiltInQueryAnalysis;
+import com.facebook.presto.sql.analyzer.BuiltInQueryPreparer;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.CanonicalPlanWithInfo;
 import com.facebook.presto.sql.planner.InputExtractor;
@@ -206,9 +206,11 @@ public class SqlQueryExecution
                     getQueryAnalyzerTimeout(getSession()))) {
                 this.queryAnalysis = queryAnalyzer.analyze(analyzerContext, preparedQuery);
             }
+
+
             this.planConstraintsHolder.set(new PlanConstraintsHolder(
                     PlanConstraintsParser.parse(Optional.of(stateMachine.getBasicQueryInfo(Optional.empty()).getQuery())),
-                    ((BuiltInQueryAnalysis) queryAnalysis).getAliases()));
+                    PlanConstraintsParser.extractRelationAliases(((BuiltInQueryPreparer.BuiltInPreparedQuery) preparedQuery).getStatement())));
 
             stateMachine.setUpdateType(queryAnalysis.getUpdateType());
             stateMachine.setExpandedQuery(queryAnalysis.getExpandedQuery());
@@ -545,6 +547,7 @@ public class SqlQueryExecution
                     .profileNanos(
                             LOGICAL_PLANNER_TIME_NANOS,
                             () -> queryAnalyzer.plan(this.analyzerContext, queryAnalysis));
+
 
             Optimizer optimizer = new Optimizer(
                     stateMachine.getSession(),

@@ -34,6 +34,8 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.planPrinter.IOPlanPrinter;
 import com.facebook.presto.sql.planner.planPrinter.PlanPrinter;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.sql.planner.sanity.PlanChecker;
 import com.facebook.presto.sql.tree.ExplainType.Type;
 import com.facebook.presto.sql.tree.Expression;
@@ -227,8 +229,7 @@ public class QueryExplainer
                 statsCalculator,
                 costCalculator,
                 true,
-                //Vivek TODO
-                EMPTY_PLAN_CONSTRAINTS_HOLDER);
+                new PlanConstraintsHolder(session.getPlanConstraints(), PlanConstraintsParser.extractRelationAliases(statement)));
 
         return session.getRuntimeStats().profileNanos(
                 OPTIMIZER_TIME_NANOS,
