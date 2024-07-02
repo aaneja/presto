@@ -370,6 +370,7 @@ public final class Session
         return planConstraints;
     }
 
+    // TODO : Remove this method from the session
     public Optional<PlanNodeStatsEstimate> getStatsFromPlanConstraints(PlanNode planNode, PlanNodeStatsEstimate statsEstimate, Lookup lookup)
     {
         return getStatsEstimateFromPlanConstraints(planConstraints.stream()

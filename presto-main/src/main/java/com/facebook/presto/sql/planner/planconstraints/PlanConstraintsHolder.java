@@ -13,23 +13,24 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
-import com.google.common.collect.HashMultimap;
+import com.facebook.presto.spi.SourceLocation;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Multimap;
 
 import java.util.List;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 
 import static java.util.Objects.requireNonNull;
 
 public class PlanConstraintsHolder
 {
-    public static final PlanConstraintsHolder EMPTY_PLAN_CONSTRAINTS_HOLDER = new PlanConstraintsHolder(ImmutableList.of(), HashMultimap.create());
+    public static final PlanConstraintsHolder EMPTY_PLAN_CONSTRAINTS_HOLDER = new PlanConstraintsHolder(ImmutableList.of(), new TreeMap<>());
     private final List<PlanConstraint> planConstraints;
-    private final Multimap<String, String> aliases;
-    public PlanConstraintsHolder(List<PlanConstraint> planConstraints, Multimap<String, String> aliases)
+    private final NavigableMap<SourceLocation, String> sourceLocationAliasMap;
+    public PlanConstraintsHolder(List<PlanConstraint> planConstraints, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
     {
         this.planConstraints = requireNonNull(planConstraints, "planconstraints is null");
-        this.aliases = requireNonNull(aliases, "aliases is null");
+        this.sourceLocationAliasMap = requireNonNull(sourceLocationAliasMap, "aliases is null");
     }
 
     public List<PlanConstraint> getPlanConstraints()
@@ -37,8 +38,8 @@ public class PlanConstraintsHolder
         return planConstraints;
     }
 
-    public Multimap<String, String> getAliases()
+    public NavigableMap<SourceLocation, String> getSourceLocationAliasMap()
     {
-        return aliases;
+        return sourceLocationAliasMap;
     }
 }

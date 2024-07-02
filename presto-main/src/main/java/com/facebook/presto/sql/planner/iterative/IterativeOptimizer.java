@@ -343,6 +343,12 @@ public class IterativeOptimizer
             {
                 return logicalPropertiesProvider;
             }
+
+            @Override
+            public PlanConstraintsHolder getPlanConstraints()
+            {
+                return context.planConstraintsHolder;
+            }
         };
     }
 

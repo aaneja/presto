@@ -23,6 +23,7 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.LogicalPropertiesProvider;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 
 import java.util.Optional;
 
@@ -70,6 +71,8 @@ public interface Rule<T>
         WarningCollector getWarningCollector();
 
         Optional<LogicalPropertiesProvider> getLogicalPropertiesProvider();
+
+        PlanConstraintsHolder getPlanConstraints();
     }
 
     final class Result
