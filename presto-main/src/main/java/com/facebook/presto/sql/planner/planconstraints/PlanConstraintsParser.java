@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SourceLocation;
@@ -57,6 +58,7 @@ public final class PlanConstraintsParser
 {
     static final String constraintsMarkerStart = "/*!";
     static final String constraintsMarkerEnd = "*/";
+    private static final Logger LOG = Logger.get(PlanConstraintsParser.class);
 
     private PlanConstraintsParser() {}
 
@@ -113,7 +115,9 @@ public final class PlanConstraintsParser
     {
         AliasLocationVisitor aliasExtractor = new AliasLocationVisitor();
         aliasExtractor.process(statement);
-        return aliasExtractor.getSourceLocationAliasMap();
+        TreeMap<SourceLocation, String> sourceLocationAliasMap = aliasExtractor.getSourceLocationAliasMap();
+        LOG.info("SourceLocation to Alias map: %s", sourceLocationAliasMap.entrySet());
+        return sourceLocationAliasMap;
     }
 
     private static Optional<Long> getCardinality(List<CardinalityConstraint> cardinalityConstraints, PlanNode planNode, Lookup lookup)

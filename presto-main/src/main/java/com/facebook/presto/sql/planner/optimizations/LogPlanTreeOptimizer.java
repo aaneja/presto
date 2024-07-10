@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner.optimizations;
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.spi.ConnectorTableHandle;
+import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.AggregationNode;
@@ -107,7 +108,10 @@ public class LogPlanTreeOptimizer
         @Override
         public Void visitProject(ProjectNode node, Integer indent)
         {
-            output(indent, "project, Assignments (%s), Outputs (%s):", node.getAssignments().getMap(), node.getOutputVariables());
+            output(indent, "[%d:%d] project, Assignments (%s), Outputs (%s):",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1),
+                    node.getAssignments().getMap(), node.getOutputVariables());
 
             return visitPlan(node, indent + 1);
         }
@@ -115,7 +119,9 @@ public class LogPlanTreeOptimizer
         @Override
         public Void visitFilter(FilterNode node, Integer indent)
         {
-            output(indent, "filter (predicate = %s)", node.getPredicate());
+            output(indent, "[%d:%d] filter (predicate = %s)",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1), node.getPredicate());
 
             return visitPlan(node, indent + 1);
         }
@@ -123,7 +129,9 @@ public class LogPlanTreeOptimizer
         @Override
         public Void visitJoin(JoinNode node, Integer indent)
         {
-            output(indent, "join (%s)(%s), Equi-join condition(%s), Filter (%s), Outputs(%s):",
+            output(indent, "[%d:%d] join (%s)(%s), Equi-join condition(%s), Filter (%s), Outputs(%s):",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1),
                     node.getType(),
                     node.getDistributionType().map(Enum::name).orElse("NONE"),
                     node.getCriteria(),
@@ -138,7 +146,9 @@ public class LogPlanTreeOptimizer
         {
             output(
                     indent,
-                    "%s aggregation over (%s)",
+                    "[%d:%d] %s aggregation over (%s)",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1),
                     node.getStep().name().toLowerCase(ENGLISH),
                     node.getGroupingKeys().stream()
                             .map(Object::toString)
@@ -151,7 +161,10 @@ public class LogPlanTreeOptimizer
         @Override
         public Void visitExchange(ExchangeNode node, Integer indent)
         {
-            output(indent, "exchange (scope=%s, partitioning=%s)", node.getScope(), node.getPartitioningScheme());
+            output(indent, "[%d:%d] exchange (scope=%s, partitioning=%s)",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1),
+                    node.getScope(), node.getPartitioningScheme());
 
             return visitPlan(node, indent + 1);
         }
@@ -160,7 +173,9 @@ public class LogPlanTreeOptimizer
         public Void visitTableScan(TableScanNode node, Integer indent)
         {
             ConnectorTableHandle connectorTableHandle = node.getTable().getConnectorHandle();
-            output(indent, "scan (%s) Constraints [Current (%s), Enforced(%s)]",
+            output(indent, "[%d:%d] scan (%s) Constraints [Current (%s), Enforced(%s)]",
+                    node.getSourceLocation().map(SourceLocation::getLine).orElse(-1),
+                    node.getSourceLocation().map(SourceLocation::getColumn).orElse(-1),
                     connectorTableHandle.toString(),
                     node.getCurrentConstraint().getDomains(),
                     node.getEnforcedConstraint().getDomains());
