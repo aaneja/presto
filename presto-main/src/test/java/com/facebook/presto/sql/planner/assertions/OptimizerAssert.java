@@ -48,7 +48,6 @@ import java.util.function.Function;
 
 import static com.facebook.presto.sql.planner.assertions.PlanAssert.assertPlan;
 import static com.facebook.presto.sql.planner.assertions.PlanAssert.assertPlanDoesNotMatch;
-import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.facebook.presto.transaction.TransactionBuilder.transaction;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -136,7 +135,7 @@ public class OptimizerAssert
 
     private Plan applyRules()
     {
-        PlanNode actual = optimizer.optimize(plan, session, types, new VariableAllocator(), idAllocator, WarningCollector.NOOP, EMPTY_PLAN_CONSTRAINTS_HOLDER).getPlanNode();
+        PlanNode actual = optimizer.optimize(plan, session, types, new VariableAllocator(), idAllocator, WarningCollector.NOOP).getPlanNode();
 
         if (!ImmutableSet.copyOf(plan.getOutputVariables()).equals(ImmutableSet.copyOf(actual.getOutputVariables()))) {
             fail(String.format(

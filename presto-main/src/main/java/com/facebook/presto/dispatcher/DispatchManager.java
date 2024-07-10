@@ -41,6 +41,11 @@ import com.facebook.presto.spi.resourceGroups.SelectionCriteria;
 import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.spi.security.AuthorizedIdentity;
 import com.facebook.presto.sql.analyzer.AnalyzerProviderManager;
+import com.facebook.presto.sql.analyzer.BuiltInQueryPreparer;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
+import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.util.concurrent.AbstractFuture;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -289,6 +294,17 @@ public class DispatchManager
             AnalyzerProvider analyzerProvider = analyzerProviderManager.getAnalyzerProvider(getAnalyzerType(session));
             preparedQuery = analyzerProvider.getQueryPreparer().prepareQuery(analyzerOptions, query, session.getPreparedStatements(), session.getWarningCollector());
             query = preparedQuery.getFormattedQuery().orElse(query);
+
+            // Infer and extract plan constraints to session
+            List<PlanConstraint> planConstraints = PlanConstraintsParser.parse(Optional.of(query));
+            if (!planConstraints.isEmpty()) {
+                Statement statement = ((BuiltInQueryPreparer.BuiltInPreparedQuery) preparedQuery).getStatement();
+                session = Session.builder(session).setPlanConstraintHolder(
+                                new PlanConstraintsHolder(
+                                        planConstraints,
+                                        PlanConstraintsParser.extractRelationAliases(statement)))
+                        .build();
+            }
 
             // select resource group
             Optional<QueryType> queryType = preparedQuery.getQueryType();

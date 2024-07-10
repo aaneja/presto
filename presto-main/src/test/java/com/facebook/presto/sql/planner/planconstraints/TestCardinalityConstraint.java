@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
 import com.google.common.collect.ImmutableList;
@@ -33,16 +34,13 @@ import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsPar
 public class TestCardinalityConstraint
         extends BasePlanTest
 {
-    public TestCardinalityConstraint()
-    {}
+    public static final SqlParser SQL_PARSER = new SqlParser();
 
     @Test
     public void testSingleTableCardinality()
     {
-        String query = "SELECT /*! card (nation 100000)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
-        Session sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of(query)))
-                .build();
+        String query = "SELECT /*! card (n 100000)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
+        Session sessionWithPlanConstraint = buildSessionWithConstraint(query);
         PlanMatchPattern output = output(
                 anyTree(
                         join(INNER,
@@ -52,22 +50,16 @@ public class TestCardinalityConstraint
 
         assertPlan(query, sessionWithPlanConstraint, output);
 
-        query = "SELECT /*! card (customer 10)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
-        sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of(query)))
-                .build();
+        query = "SELECT /*! card (c 10)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
+        sessionWithPlanConstraint = buildSessionWithConstraint(query);
         assertPlan(query, sessionWithPlanConstraint, output);
 
-        query = "SELECT /*! card (customer 10) card (nation 15)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
-        sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of(query)))
-                .build();
+        query = "SELECT /*! card (c 10) card (nation 15)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
+        sessionWithPlanConstraint = buildSessionWithConstraint(query);
         assertPlan(query, sessionWithPlanConstraint, output);
 
-        query = "SELECT /*! card (customer 100) card (nation 15)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
-        sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of(query)))
-                .build();
+        query = "SELECT /*! card (c 100) card (nation 15)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
+        sessionWithPlanConstraint = buildSessionWithConstraint(query);
         output = output(
                 anyTree(
                         join(INNER,
@@ -76,23 +68,29 @@ public class TestCardinalityConstraint
                                 anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey"))))));
         assertPlan(query, sessionWithPlanConstraint, output);
 
-        query = "SELECT /*! card (customer 500000) card (nation 250000)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
-        sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of(query)))
-                .build();
+        query = "SELECT /*! card (c 500000) card (nation 250000)*/ COUNT(*) FROM nation n, customer c WHERE n.nationkey = c.nationkey";
+        sessionWithPlanConstraint = buildSessionWithConstraint(query);
         assertPlan(query, sessionWithPlanConstraint, output);
+    }
+
+    private Session buildSessionWithConstraint(String query)
+    {
+        return Session.builder(getQueryRunner().getDefaultSession())
+                .setPlanConstraintHolder(new PlanConstraintsHolder(
+                        parse(Optional.of(query)),
+                        PlanConstraintsParser.extractRelationAliases(SQL_PARSER.createStatement(query)))).build();
     }
 
     @Test
     public void testCardinalityOnJoinConstraints()
     {
-        String query = "SELECT COUNT(*) " +
+        String baseQuery = "SELECT COUNT(*) " +
                 "FROM   nation n, " +
                 "       orders o, " +
                 "       customer c " +
                 "WHERE  c.custkey = o.custkey" +
                 "       AND c.nationkey = n.nationkey";
-        assertPlan(query,
+        assertPlan(baseQuery,
                 output(
                         anyTree(
                                 join(INNER,
@@ -104,13 +102,12 @@ public class TestCardinalityConstraint
                                                         anyTree(tableScan("customer", ImmutableMap.of("custkey", "custkey", "nationkey_1", "nationkey"))),
                                                         anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))))))));
 
-        Session sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of("/*! card ((customer orders) 10) */")))
-                .build();
+        String queryWithConstraint = "/*! card ((c o) 10) */ " + baseQuery;
+        Session sessionWithPlanConstraint = buildSessionWithConstraint(queryWithConstraint);
 
         // !! POSSIBLE BUG : Need to check why the 10 row (customer orders) which is smaller than the 25 row nation is calculated as the probe side and not the build side
         // !! In manual testing, for values <=8 we get the expected plan of (nation (customer orders))
-        assertPlan(query,
+        assertPlan(queryWithConstraint,
                 sessionWithPlanConstraint,
                 output(
                         anyTree(
@@ -123,11 +120,10 @@ public class TestCardinalityConstraint
                                                         anyTree(tableScan("orders", ImmutableMap.of("custkey_4", "custkey"))))),
                                         anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))))));
 
-        sessionWithPlanConstraint = Session.builder(getQueryRunner().getDefaultSession())
-                .addPlanConstraints(parse(Optional.of("/*! card ((customer orders) 1000) card (nation 50000)*/")))
-                .build();
+        queryWithConstraint = "/*! card ((c o) 1000) card (n 50000)*/ " + baseQuery;
+        sessionWithPlanConstraint = buildSessionWithConstraint(queryWithConstraint);
 
-        assertPlan(query,
+        assertPlan(queryWithConstraint,
                 sessionWithPlanConstraint,
                 output(
                         anyTree(

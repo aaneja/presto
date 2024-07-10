@@ -613,7 +613,7 @@ public class SqlQueryScheduler
         PlanFragment fragment = subPlan.getFragment();
         PlanNode newRoot = fragment.getRoot();
         for (PlanOptimizer optimizer : runtimePlanOptimizers) {
-            newRoot = optimizer.optimize(newRoot, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, planConstraintsHolder).getPlanNode();
+            newRoot = optimizer.optimize(newRoot, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector).getPlanNode();
         }
         if (newRoot != fragment.getRoot()) {
             Optional<StatsAndCosts> estimatedStatsAndCosts = fragment.getStatsAndCosts();

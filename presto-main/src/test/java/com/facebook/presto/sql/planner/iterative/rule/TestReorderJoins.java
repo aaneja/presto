@@ -18,20 +18,25 @@ import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.cost.CostComparator;
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.cost.VariableStatsEstimate;
+import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.EquiJoinClause;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
+import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleAssert;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
 import com.facebook.presto.sql.planner.planconstraints.JoinConstraint;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.sql.planner.planconstraints.RelationConstraint;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.tree.QualifiedName;
+import com.facebook.presto.sql.tree.Statement;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.AfterClass;
@@ -40,6 +45,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Optional;
 
 import static com.facebook.airlift.testing.Closeables.closeAllRuntimeException;
@@ -839,7 +845,7 @@ public class TestReorderJoins
                                 anyTree(
                                         project(ImmutableMap.of("SUBTRACT", expression("S_ACCTBAL - C_ACCTBAL")),
                                                 join(INNER,
-                                                        ImmutableList.of(), //CrossJoin
+                                                        ImmutableList.of(), // CrossJoin
                                                         join(INNER,
                                                                 ImmutableList.of(equiJoinClause("PS_SUPPKEY", "S_SUPPKEY")),
                                                                 anyTree(tableScan("partsupp", ImmutableMap.of("PS_SUPPKEY", "suppkey"))),
@@ -861,7 +867,7 @@ public class TestReorderJoins
                                 anyTree(
                                         filter("O_TOTALPRICE = S_ACCTBAL - C_ACCTBAL",
                                                 join(INNER,
-                                                        ImmutableList.of(), //CrossJoin
+                                                        ImmutableList.of(), // CrossJoin
                                                         join(INNER,
                                                                 ImmutableList.of(equiJoinClause("O_CUSTKEY", "C_CUSTKEY")),
                                                                 anyTree(tableScan("orders", ImmutableMap.of("O_CUSTKEY", "custkey", "O_TOTALPRICE", "totalprice"))),
@@ -873,11 +879,11 @@ public class TestReorderJoins
         // For sub-graphs that are fully connected, join-reordering works with complex predicates as expected
         // The rest of the join graph is connected using a CrossJoin
         assertPlan("select 1 " +
-                "from orders o, customer c, supplier s, partsupp ps, part p " +
-                "where s.suppkey = ps.suppkey " +
-                "    and c.custkey = o.custkey " +
-                "    and s.acctbal = c.acctbal + o.totalprice" +
-                "    and ps.partkey - p.partkey = 0 ",
+                        "from orders o, customer c, supplier s, partsupp ps, part p " +
+                        "where s.suppkey = ps.suppkey " +
+                        "    and c.custkey = o.custkey " +
+                        "    and s.acctbal = c.acctbal + o.totalprice" +
+                        "    and ps.partkey - p.partkey = 0 ",
                 tester.getSession(),
                 anyTree(
                         filter("PS_PARTKEY - P_PARTKEY = 0",
@@ -911,11 +917,12 @@ public class TestReorderJoins
             // Force a poor REPLICATED join with a larger build side
             JoinConstraint constraint = new JoinConstraint(INNER,
                     Optional.of(REPLICATED),
-                    ImmutableList.of(new RelationConstraint("orders"), new RelationConstraint("lineitem")));
+                    ImmutableList.of(new RelationConstraint("o"), new RelationConstraint("l")));
 
-            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+            String testQuery = "select 1 from lineitem l, orders o where l.orderkey = o.orderkey";
+            Session constrainedSession = buildSessionWithConstraints(constraint, testQuery);
 
-            assertPlan("select 1 from lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+            assertPlan(testQuery, constrainedSession,
                     anyTree(
                             join(INNER,
                                     ImmutableList.of(equiJoinClause("O_ORDERKEY", "L_ORDERKEY")),
@@ -932,15 +939,16 @@ public class TestReorderJoins
                     ImmutableList.of(
                             new JoinConstraint(INNER,
                                     Optional.empty(),
-                                    ImmutableList.of(new RelationConstraint("supplier"), new RelationConstraint("part"))),
+                                    ImmutableList.of(new RelationConstraint("s"), new RelationConstraint("p"))),
                             new JoinConstraint(INNER,
                                     Optional.empty(),
-                                    ImmutableList.of(new RelationConstraint("partsupp"), new RelationConstraint("customer")))));
+                                    ImmutableList.of(new RelationConstraint("ps"), new RelationConstraint("c")))));
 
-            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+            String testQuery = "select 1 from supplier s, partsupp ps, customer c, part p where s.suppkey = ps.suppkey and ps.partkey = p.partkey and s.nationkey = c.nationkey";
+            Session constrainedSession = buildSessionWithConstraints(constraint, testQuery);
 
             // Force a 4-table JOIN that includes 2 CrossJoins for a fully connected join graph
-            assertPlan("select 1 from supplier s, partsupp ps, customer c, part p where s.suppkey = ps.suppkey and ps.partkey = p.partkey and s.nationkey = c.nationkey",
+            assertPlan(testQuery,
                     constrainedSession,
                     anyTree(
                             join(
@@ -960,14 +968,15 @@ public class TestReorderJoins
                     INNER,
                     Optional.empty(),
                     ImmutableList.of(
-                            new RelationConstraint("supplier"),
+                            new RelationConstraint("s"),
                             new JoinConstraint(INNER,
                                     Optional.empty(),
-                                    ImmutableList.of(new RelationConstraint("lineitem"), new RelationConstraint("orders")))));
+                                    ImmutableList.of(new RelationConstraint("l"), new RelationConstraint("o")))));
 
-            Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+            String testQuery = "select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey";
+            Session constrainedSession = buildSessionWithConstraints(constraint, testQuery);
 
-            assertPlan("select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+            assertPlan(testQuery, constrainedSession,
                     anyTree(
                             join(INNER,
                                     ImmutableList.of(),
@@ -1002,6 +1011,20 @@ public class TestReorderJoins
         //                                             anyTree(
         //                                                     tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
         // }
+    }
+
+    private Session buildSessionWithConstraints(JoinConstraint constraint, String testQuery)
+    {
+        return Session.builder(tester.getSession()).setPlanConstraintHolder(
+                new PlanConstraintsHolder(ImmutableList.of(constraint),
+                        buildSourceLocationAliasMap(testQuery))
+        ).build();
+    }
+
+    private NavigableMap<SourceLocation, String> buildSourceLocationAliasMap(String testQuery)
+    {
+        Statement statement = new SqlParser().createStatement(testQuery);
+        return PlanConstraintsParser.extractRelationAliases(statement);
     }
 
     @Test

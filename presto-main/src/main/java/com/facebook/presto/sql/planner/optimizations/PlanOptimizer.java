@@ -19,7 +19,6 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 
 public interface PlanOptimizer
 {
@@ -28,8 +27,7 @@ public interface PlanOptimizer
             TypeProvider types,
             VariableAllocator variableAllocator,
             PlanNodeIdAllocator idAllocator,
-            WarningCollector warningCollector,
-            PlanConstraintsHolder planConstraintsHolder);
+            WarningCollector warningCollector);
 
     default boolean isEnabled(Session session)
     {
@@ -57,15 +55,14 @@ public interface PlanOptimizer
             TypeProvider types,
             VariableAllocator variableAllocator,
             PlanNodeIdAllocator idAllocator,
-            WarningCollector warningCollector,
-            PlanConstraintsHolder planConstraintsHolder)
+            WarningCollector warningCollector)
     {
         setEnabledForTesting(true);
 
         boolean isApplicable = false;
         try {
             // wrap in try/catch block in case optimization throws an error
-            PlanOptimizerResult optimizerResult = optimize(plan, session, types, variableAllocator, idAllocator, warningCollector, planConstraintsHolder);
+            PlanOptimizerResult optimizerResult = optimize(plan, session, types, variableAllocator, idAllocator, warningCollector);
             isApplicable = optimizerResult.isOptimizerTriggered();
         }
         finally {

@@ -101,7 +101,7 @@ import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.getNonIdentityAssignments;
 import static com.facebook.presto.sql.planner.plan.AssignmentUtils.identityAssignments;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
-import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
+import static com.facebook.presto.sql.planner.planconstraints.ConstraintMatcherUtil.matches;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.in;
@@ -245,7 +245,7 @@ public class ReorderJoins
 
         private final Map<Set<PlanNode>, JoinEnumerationResult> memo = new HashMap<>();
         private final FunctionResolution functionResolution;
-        private final PlanConstraintsHolder planConstraints;
+        private final PlanConstraintsHolder planConstraintsHolder;
 
         @VisibleForTesting
         JoinEnumerator(CostComparator costComparator, RowExpression filter, Context context, DeterminismEvaluator determinismEvaluator, FunctionResolution functionResolution, Metadata metadata)
@@ -262,7 +262,7 @@ public class ReorderJoins
             this.allFilterInference = createEqualityInference(metadata, filter);
             this.logicalRowExpressions = new LogicalRowExpressions(determinismEvaluator, functionResolution, metadata.getFunctionAndTypeManager());
             this.functionResolution = functionResolution;
-            this.planConstraints = context.getPlanConstraints();
+            this.planConstraintsHolder = context.getSession().getPlanConstraintsHolder();
         }
 
         private void getPlanConstraintsSources(PlanConstraint constraint, ImmutableSet.Builder<PlanNode> foundSources, Set<PlanNode> sourceCandidates)
@@ -274,7 +274,7 @@ public class ReorderJoins
                 PlanNode matched = null;
                 for (PlanNode source : sourceCandidates) {
                     // TODO : Ensure that only a single source would match this relation constraint
-                    if (matches(lookup, constraint, source, planConstraints.getSourceLocationAliasMap())) {
+                    if (matches(lookup, constraint, source, planConstraintsHolder.getSourceLocationAliasMap())) {
                         matched = source;
                         break;
                     }
@@ -293,7 +293,7 @@ public class ReorderJoins
          */
         private Set<PlanNode> matchJoinConstraintSources(Set<PlanNode> allSources)
         {
-            List<PlanConstraint> planConstraints = this.planConstraints.getPlanConstraints();
+            List<PlanConstraint> planConstraints = this.planConstraintsHolder.getPlanConstraints();
             if (planConstraints.isEmpty()) {
                 return allSources;
             }
@@ -419,7 +419,7 @@ public class ReorderJoins
                 PlanNode matched = null;
                 for (PlanNode source : sources) {
                     // TODO : Ensure that only a single source would match this relation constraint
-                    if (matches(lookup, constraint, source, planConstraints.getSourceLocationAliasMap())) {
+                    if (matches(lookup, constraint, source, planConstraintsHolder.getSourceLocationAliasMap())) {
                         matched = source;
                         break;
                     }

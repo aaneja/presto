@@ -207,7 +207,6 @@ public class SqlQueryExecution
                 this.queryAnalysis = queryAnalyzer.analyze(analyzerContext, preparedQuery);
             }
 
-
             this.planConstraintsHolder.set(new PlanConstraintsHolder(
                     PlanConstraintsParser.parse(Optional.of(stateMachine.getBasicQueryInfo(Optional.empty()).getQuery())),
                     PlanConstraintsParser.extractRelationAliases(((BuiltInQueryPreparer.BuiltInPreparedQuery) preparedQuery).getStatement())));
@@ -548,7 +547,6 @@ public class SqlQueryExecution
                             LOGICAL_PLANNER_TIME_NANOS,
                             () -> queryAnalyzer.plan(this.analyzerContext, queryAnalysis));
 
-
             Optimizer optimizer = new Optimizer(
                     stateMachine.getSession(),
                     metadata,
@@ -560,8 +558,7 @@ public class SqlQueryExecution
                     stateMachine.getWarningCollector(),
                     statsCalculator,
                     costCalculator,
-                    false,
-                    planConstraintsHolder.get());
+                    false);
 
             Plan plan = getSession().getRuntimeStats().profileNanos(
                     OPTIMIZER_TIME_NANOS,

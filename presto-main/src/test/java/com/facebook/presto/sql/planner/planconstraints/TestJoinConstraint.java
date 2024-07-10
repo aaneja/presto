@@ -32,7 +32,7 @@ import java.util.TreeMap;
 
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
-import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
+import static com.facebook.presto.sql.planner.planconstraints.ConstraintMatcherUtil.matches;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;

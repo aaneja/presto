@@ -101,7 +101,6 @@ import static com.facebook.presto.sql.planner.PlanFragmenterUtils.isCoordinatorO
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textLogicalPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textPlanFragment;
-import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.google.common.base.Throwables.propagateIfPossible;
 import static com.google.common.base.Verify.verify;
 import static java.lang.String.format;
@@ -346,7 +345,7 @@ public class PrestoSparkAdaptiveQueryExecution
             // Re-optimize plan.
             PlanNode optimizedPlan = planAndFragments.getRemainingPlan().get();
             for (PlanOptimizer optimizer : adaptivePlanOptimizers) {
-                optimizedPlan = optimizer.optimize(optimizedPlan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, EMPTY_PLAN_CONSTRAINTS_HOLDER).getPlanNode();
+                optimizedPlan = optimizer.optimize(optimizedPlan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector).getPlanNode();
             }
 
             if (!optimizedPlan.equals(planAndFragments.getRemainingPlan().get())) {

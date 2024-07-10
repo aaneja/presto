@@ -41,9 +41,8 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.optimizations.OptimizerInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerResultCollector;
 import com.facebook.presto.sql.planner.planconstraints.CardinalityConstraint;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.transaction.TransactionManager;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
@@ -51,9 +50,7 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 
 import java.security.Principal;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -72,7 +69,8 @@ import static com.facebook.presto.SystemSessionProperties.warnOnCommonNanPattern
 import static com.facebook.presto.spi.ConnectorId.createInformationSchemaConnectorId;
 import static com.facebook.presto.spi.ConnectorId.createSystemTablesConnectorId;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
-import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.getStatsEstimateFromPlanConstraints;
+import static com.facebook.presto.sql.planner.planconstraints.ConstraintMatcherUtil.getStatsEstimate;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.facebook.presto.util.Failures.checkCondition;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -114,7 +112,7 @@ public final class Session
     private final CTEInformationCollector cteInformationCollector = new CTEInformationCollector();
     private final Map<PlanNodeId, PlanNodeStatsEstimate> planNodeStatsMap = new HashMap<>();
     private final Map<PlanNodeId, PlanCostEstimate> planNodeCostMap = new HashMap<>();
-    private final List<PlanConstraint> planConstraints;
+    private final PlanConstraintsHolder planConstraintsHolder;
 
     public Session(
             QueryId queryId,
@@ -142,7 +140,7 @@ public final class Session
             Optional<Tracer> tracer,
             WarningCollector warningCollector,
             RuntimeStats runtimeStats,
-            List<PlanConstraint> planConstraints)
+            PlanConstraintsHolder planConstraintsHolder)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.transactionId = requireNonNull(transactionId, "transactionId is null");
@@ -184,7 +182,7 @@ public final class Session
         this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
         this.runtimeStats = requireNonNull(runtimeStats, "runtimeStats is null");
         this.context = new AccessControlContext(queryId, clientInfo, clientTags, source, warningCollector, runtimeStats);
-        this.planConstraints = requireNonNull(planConstraints, "planConstraints is null");
+        this.planConstraintsHolder = requireNonNull(planConstraintsHolder, "planConstraintsHolder is null");
     }
 
     public QueryId getQueryId()
@@ -365,18 +363,19 @@ public final class Session
         return planNodeCostMap;
     }
 
-    public List<PlanConstraint> getPlanConstraints()
+    public PlanConstraintsHolder getPlanConstraintsHolder()
     {
-        return planConstraints;
+        return planConstraintsHolder;
     }
 
     // TODO : Remove this method from the session
     public Optional<PlanNodeStatsEstimate> getStatsFromPlanConstraints(PlanNode planNode, PlanNodeStatsEstimate statsEstimate, Lookup lookup)
     {
-        return getStatsEstimateFromPlanConstraints(planConstraints.stream()
-                .filter(CardinalityConstraint.class::isInstance)
-                .map(CardinalityConstraint.class::cast)
-                .collect(toImmutableList()),
+        return getStatsEstimate(planConstraintsHolder.getPlanConstraints().stream()
+                        .filter(CardinalityConstraint.class::isInstance)
+                        .map(CardinalityConstraint.class::cast)
+                        .collect(toImmutableList()),
+                planConstraintsHolder.getSourceLocationAliasMap(),
                 planNode,
                 statsEstimate, lookup);
     }
@@ -476,7 +475,7 @@ public final class Session
                 tracer,
                 warningCollector,
                 runtimeStats,
-                planConstraints);
+                planConstraintsHolder);
     }
 
     public Session withDefaultProperties(
@@ -533,7 +532,7 @@ public final class Session
                 tracer,
                 warningCollector,
                 runtimeStats,
-                ImmutableList.of());
+                planConstraintsHolder);
     }
 
     public ConnectorSession toConnectorSession()
@@ -598,8 +597,7 @@ public final class Session
                 unprocessedCatalogProperties,
                 identity.getRoles(),
                 preparedStatements,
-                sessionFunctions,
-                planConstraints);
+                sessionFunctions);
     }
 
     @Override
@@ -622,7 +620,7 @@ public final class Session
                 .add("clientTags", clientTags)
                 .add("resourceEstimates", resourceEstimates)
                 .add("startTime", startTime)
-                .add("planConstraints", planConstraints)
+                .add("planConstraintsHolder", planConstraintsHolder)
                 .omitNullValues()
                 .toString();
     }
@@ -664,7 +662,7 @@ public final class Session
         private final Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions = new HashMap<>();
         private WarningCollector warningCollector = WarningCollector.NOOP;
         private RuntimeStats runtimeStats = new RuntimeStats();
-        private List<PlanConstraint> planConstraints = new ArrayList<>();
+        private PlanConstraintsHolder planConstraintsHolder = EMPTY_PLAN_CONSTRAINTS_HOLDER;
 
         private SessionBuilder(SessionPropertyManager sessionPropertyManager)
         {
@@ -698,7 +696,7 @@ public final class Session
             this.tracer = requireNonNull(session.tracer, "tracer is null");
             this.warningCollector = requireNonNull(session.warningCollector, "warningCollector is null");
             this.runtimeStats = requireNonNull(session.runtimeStats, "runtimeStats is null");
-            this.planConstraints = requireNonNull(session.planConstraints, "planConstraints is null");
+            this.planConstraintsHolder = requireNonNull(session.planConstraintsHolder, "planConstraints is null");
         }
 
         public SessionBuilder setQueryId(QueryId queryId)
@@ -855,12 +853,9 @@ public final class Session
             return this;
         }
 
-        public SessionBuilder addPlanConstraints(List<PlanConstraint> planConstraints)
+        public SessionBuilder setPlanConstraintHolder(PlanConstraintsHolder planConstraintsHolder)
         {
-            ImmutableList.Builder<PlanConstraint> builder = ImmutableList.builder();
-            builder.addAll(this.planConstraints);
-            builder.addAll(planConstraints);
-            this.planConstraints = builder.build();
+            this.planConstraintsHolder = planConstraintsHolder;
             return this;
         }
 
@@ -897,7 +892,7 @@ public final class Session
                     tracer,
                     warningCollector,
                     runtimeStats,
-                    planConstraints);
+                    planConstraintsHolder);
         }
     }
 

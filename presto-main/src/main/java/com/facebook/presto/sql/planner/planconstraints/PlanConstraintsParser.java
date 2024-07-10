@@ -14,12 +14,9 @@
 package com.facebook.presto.sql.planner.planconstraints;
 
 import com.facebook.airlift.log.Logger;
-import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.JoinDistributionType;
-import com.facebook.presto.spi.plan.PlanNode;
-import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.Node;
@@ -41,18 +38,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 
-import static com.facebook.presto.operator.scalar.MathFunctions.round;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
 import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
-import static com.facebook.presto.sql.planner.planconstraints.JoinConstraint.matches;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.CARD;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.ConstraintType.JOIN;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
 
 public final class PlanConstraintsParser
 {
@@ -89,28 +83,6 @@ public final class PlanConstraintsParser
         }
     }
 
-    public static Optional<PlanNodeStatsEstimate> getStatsEstimateFromPlanConstraints(List<CardinalityConstraint> cardinalityConstraints,
-            PlanNode planNode,
-            PlanNodeStatsEstimate statsEstimate,
-            Lookup lookup)
-    {
-        Optional<PlanNodeStatsEstimate> newStatsEstimate = Optional.empty();
-
-        Optional<Long> cardinality = getCardinality(cardinalityConstraints, planNode, lookup);
-        if (cardinality.isPresent()) {
-            double cardinalityAsDouble = cardinality.get().doubleValue();
-            double factor = cardinalityAsDouble / statsEstimate.getOutputRowCount();
-            double totalSize = round(factor * statsEstimate.getOutputSizeInBytes(), 0);
-            PlanNodeStatsEstimate.Builder builder = PlanNodeStatsEstimate.buildFrom(statsEstimate);
-            builder.setOutputRowCount(cardinalityAsDouble);
-            builder.setTotalSize(totalSize);
-            builder.setConfident(true);
-            newStatsEstimate = Optional.of(builder.build());
-        }
-
-        return newStatsEstimate;
-    }
-
     public static NavigableMap<SourceLocation, String> extractRelationAliases(Statement statement)
     {
         AliasLocationVisitor aliasExtractor = new AliasLocationVisitor();
@@ -118,17 +90,6 @@ public final class PlanConstraintsParser
         TreeMap<SourceLocation, String> sourceLocationAliasMap = aliasExtractor.getSourceLocationAliasMap();
         LOG.info("SourceLocation to Alias map: %s", sourceLocationAliasMap.entrySet());
         return sourceLocationAliasMap;
-    }
-
-    private static Optional<Long> getCardinality(List<CardinalityConstraint> cardinalityConstraints, PlanNode planNode, Lookup lookup)
-    {
-        for (CardinalityConstraint constraint : cardinalityConstraints) {
-            // TODO : Fix me, We need to plumb the source location to alias map
-            if (matches(lookup, constraint, planNode, new TreeMap<>())) {
-                return Optional.of(constraint.getCardinalityEstimate().getCardinality());
-            }
-        }
-        return Optional.empty();
     }
 
     private static List<PlanConstraint> parse(String constraintsString)
@@ -142,7 +103,7 @@ public final class PlanConstraintsParser
         List<PlanConstraint> planConstraints = new ArrayList<>();
         int startIndex = 0;
         Optional<HintString> hintStringOptional = getNextHint(constraintsString, startIndex);
-        while (hintStringOptional .isPresent()) {
+        while (hintStringOptional.isPresent()) {
             HintString hintString = hintStringOptional.get();
             Scanner scanner = new Scanner(new StringReader(hintString.getHint()));
             scanner.nextToken();
@@ -227,7 +188,7 @@ public final class PlanConstraintsParser
                         //!(nodes.get(nodes.size() - 1) instanceof CardinalityEstimate)) {
                         throw new IOException("malformed cardinality constraint");
                     }
-                    //return new CardinalityConstraint(nodes.subList(0, nodes.size() - 1), (CardinalityEstimate) nodes.get(nodes.size() - 1));
+                    // return new CardinalityConstraint(nodes.subList(0, nodes.size() - 1), (CardinalityEstimate) nodes.get(nodes.size() - 1));
                     return new CardinalityConstraint(nodes.get(0), (CardinalityEstimate) nodes.get(1));
                 }
 
@@ -440,7 +401,9 @@ public final class PlanConstraintsParser
     }
 
     @VisibleForTesting
-    public static class  AliasLocationVisitor extends DefaultTraversalVisitor<Void, Void> {
+    public static class AliasLocationVisitor
+            extends DefaultTraversalVisitor<Void, Void>
+    {
         TreeMap<SourceLocation, String> sourceLocationAliasMap = new TreeMap<>();
 
         private void recordAlias(Node node, String alias)
@@ -464,7 +427,7 @@ public final class PlanConstraintsParser
             String alias = node.getAlias().toString();
             recordAlias(node, alias);
 
-            return super.visitAliasedRelation(node,context);
+            return super.visitAliasedRelation(node, context);
         }
 
         @Override
@@ -476,7 +439,8 @@ public final class PlanConstraintsParser
         }
 
         @Override
-        protected Void visitTable(Table node, Void context) {
+        protected Void visitTable(Table node, Void context)
+        {
             String alias = node.getName().toString();
             recordAlias(node, alias);
             return super.visitTable(node, context);

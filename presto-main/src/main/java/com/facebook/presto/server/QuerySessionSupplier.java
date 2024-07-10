@@ -27,7 +27,6 @@ import com.facebook.presto.spi.security.AccessControl;
 import com.facebook.presto.spi.security.AuthorizedIdentity;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.sql.SqlEnvironmentConfig;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.transaction.TransactionManager;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -101,8 +100,7 @@ public class QuerySessionSupplier
                 .setTraceToken(context.getTraceToken())
                 .setResourceEstimates(context.getResourceEstimates())
                 .setTracer(context.getTracer())
-                .setRuntimeStats(context.getRuntimeStats())
-                .addPlanConstraints(PlanConstraintsParser.parse(query));
+                .setRuntimeStats(context.getRuntimeStats());
 
         if (forcedSessionTimeZone.isPresent()) {
             sessionBuilder.setTimeZoneKey(forcedSessionTimeZone.get());

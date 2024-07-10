@@ -26,7 +26,6 @@ import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.MetadataDeleteNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.google.common.collect.Iterables;
 
 import java.util.List;
@@ -59,7 +58,7 @@ public class MetadataDeleteOptimizer
     }
 
     @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector, PlanConstraintsHolder planConstraintsHolder)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
         Optimizer optimizer = new Optimizer(session, metadata, idAllocator);
         PlanNode rewrittenPlan = SimplePlanRewriter.rewriteWith(optimizer, plan, null);

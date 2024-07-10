@@ -33,7 +33,6 @@ import com.facebook.presto.sql.planner.plan.AbstractJoinNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.google.common.collect.ImmutableMap;
@@ -82,8 +81,7 @@ public class RemoveUnsupportedDynamicFilters
             TypeProvider types,
             VariableAllocator variableAllocator,
             PlanNodeIdAllocator idAllocator,
-            WarningCollector warningCollector,
-            PlanConstraintsHolder planConstraintsHolder)
+            WarningCollector warningCollector)
     {
         Rewriter rewriter = new RemoveUnsupportedDynamicFilters.Rewriter();
         PlanWithConsumedDynamicFilters result = plan.accept(rewriter, ImmutableSet.of());

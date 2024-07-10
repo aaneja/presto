@@ -13,7 +13,11 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
+import com.facebook.drift.annotations.ThriftField;
+import com.facebook.drift.annotations.ThriftStruct;
 import com.facebook.presto.spi.SourceLocation;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.google.common.collect.ImmutableList;
 
 import java.util.List;
@@ -22,22 +26,34 @@ import java.util.TreeMap;
 
 import static java.util.Objects.requireNonNull;
 
+@ThriftStruct
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "@type")
 public class PlanConstraintsHolder
 {
     public static final PlanConstraintsHolder EMPTY_PLAN_CONSTRAINTS_HOLDER = new PlanConstraintsHolder(ImmutableList.of(), new TreeMap<>());
     private final List<PlanConstraint> planConstraints;
     private final NavigableMap<SourceLocation, String> sourceLocationAliasMap;
-    public PlanConstraintsHolder(List<PlanConstraint> planConstraints, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
+
+    public PlanConstraintsHolder(
+            @JsonProperty("planConstraints") List<PlanConstraint> planConstraints,
+            @JsonProperty("sourceLocationAliasMap") NavigableMap<SourceLocation, String> sourceLocationAliasMap)
     {
         this.planConstraints = requireNonNull(planConstraints, "planconstraints is null");
         this.sourceLocationAliasMap = requireNonNull(sourceLocationAliasMap, "aliases is null");
     }
 
+    @ThriftField(1)
+    @JsonProperty
     public List<PlanConstraint> getPlanConstraints()
     {
         return planConstraints;
     }
 
+    @ThriftField(2)
+    @JsonProperty
     public NavigableMap<SourceLocation, String> getSourceLocationAliasMap()
     {
         return sourceLocationAliasMap;

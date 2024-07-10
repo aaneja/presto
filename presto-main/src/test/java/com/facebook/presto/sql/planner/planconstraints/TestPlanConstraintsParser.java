@@ -38,7 +38,7 @@ public class TestPlanConstraintsParser
         parse(Optional.of(constraintsMarkerStart + " join (part supplier) " + constraintsMarkerEnd));
 
         // This will be a documented restriction on the plan constraints framework (P and R are restricted keywords for now)
-        //parse(Optional.of(constraintsMarkerStart + " join (p supplier) " + constraintsMarkerEnd));
+        // parse(Optional.of(constraintsMarkerStart + " join (p supplier) " + constraintsMarkerEnd));
     }
 
     @Test
@@ -235,7 +235,8 @@ public class TestPlanConstraintsParser
     }
 
     @Test
-    public void TestAliasLocationVisitor() {
+    public void TestAliasLocationVisitor()
+    {
         String query = "\n" +
                 "with common as (select a1,b1 from t1)\n" +
                 "select 1 from common x join common y on x.a1=y.a1\n" +
@@ -244,6 +245,5 @@ public class TestPlanConstraintsParser
         PlanConstraintsParser.AliasLocationVisitor visitor = new PlanConstraintsParser.AliasLocationVisitor();
         statement.accept(visitor, null);
         visitor.getSourceLocationAliasMap().forEach((k, v) -> System.out.printf("[%d,%d] : %s%n", k.getLine(), k.getColumn(), v));
-
     }
 }

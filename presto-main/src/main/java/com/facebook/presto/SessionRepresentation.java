@@ -30,18 +30,17 @@ import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.SelectedRole;
 import com.facebook.presto.spi.security.TokenAuthenticator;
 import com.facebook.presto.spi.session.ResourceEstimates;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 
@@ -71,7 +70,6 @@ public final class SessionRepresentation
     private final Map<String, SelectedRole> roles;
     private final Map<String, String> preparedStatements;
     private final Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions;
-    private final List<PlanConstraint> planConstraints;
 
     @ThriftConstructor
     @JsonCreator
@@ -98,8 +96,7 @@ public final class SessionRepresentation
             @JsonProperty("unprocessedCatalogProperties") Map<String, Map<String, String>> unprocessedCatalogProperties,
             @JsonProperty("roles") Map<String, SelectedRole> roles,
             @JsonProperty("preparedStatements") Map<String, String> preparedStatements,
-            @JsonProperty("sessionFunctions") Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions,
-            @JsonProperty("planConstraints") List<PlanConstraint> planConstraints)
+            @JsonProperty("sessionFunctions") Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.transactionId = requireNonNull(transactionId, "transactionId is null");
@@ -122,7 +119,6 @@ public final class SessionRepresentation
         this.roles = ImmutableMap.copyOf(roles);
         this.preparedStatements = ImmutableMap.copyOf(preparedStatements);
         this.sessionFunctions = ImmutableMap.copyOf(sessionFunctions);
-        this.planConstraints = requireNonNull(planConstraints, "planConstraints is null");
 
         ImmutableMap.Builder<ConnectorId, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.builder();
         for (Entry<ConnectorId, Map<String, String>> entry : catalogProperties.entrySet()) {
@@ -298,13 +294,6 @@ public final class SessionRepresentation
         return sessionFunctions;
     }
 
-    @ThriftField(24)
-    @JsonProperty
-    public List<PlanConstraint> getPlanConstraints()
-    {
-        return planConstraints;
-    }
-
     public Session toSession(SessionPropertyManager sessionPropertyManager)
     {
         return toSession(sessionPropertyManager, emptyMap(), emptyMap());
@@ -351,6 +340,7 @@ public final class SessionRepresentation
                 // we use NOOP to create a session from the representation as worker does not require warning collectors
                 WarningCollector.NOOP,
                 new RuntimeStats(),
-                planConstraints);
+                // Worker's dont need to be aware of any plan constraints
+                EMPTY_PLAN_CONSTRAINTS_HOLDER);
     }
 }

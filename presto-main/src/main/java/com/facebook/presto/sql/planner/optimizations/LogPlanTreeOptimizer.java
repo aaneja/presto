@@ -32,7 +32,6 @@ import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.google.common.base.Strings;
 
 import static com.facebook.presto.sql.planner.optimizations.PlanOptimizerResult.optimizerResult;
@@ -52,7 +51,7 @@ public class LogPlanTreeOptimizer
     }
 
     @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector, PlanConstraintsHolder planConstraintsHolder)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
         log.info("------ %s", stateMarker);
         MinimalTreePrinter minimalTreePrinter = new MinimalTreePrinter(Lookup.noLookup());

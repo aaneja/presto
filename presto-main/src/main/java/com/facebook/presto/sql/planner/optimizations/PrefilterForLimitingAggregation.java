@@ -37,7 +37,6 @@ import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.tree.Join;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -117,8 +116,7 @@ public class PrefilterForLimitingAggregation
             TypeProvider types,
             VariableAllocator variableAllocator,
             PlanNodeIdAllocator idAllocator,
-            WarningCollector warningCollector,
-            PlanConstraintsHolder planConstraintsHolder)
+            WarningCollector warningCollector)
     {
         if (isEnabled(session)) {
             Rewriter rewriter = new Rewriter(session, metadata, types, statsCalculator, idAllocator, variableAllocator);

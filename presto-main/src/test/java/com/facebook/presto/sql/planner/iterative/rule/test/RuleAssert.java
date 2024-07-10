@@ -41,7 +41,6 @@ import com.facebook.presto.sql.planner.iterative.PlanNodeMatcher;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesImpl;
 import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesProviderImpl;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableSet;
@@ -312,12 +311,6 @@ public class RuleAssert
             public Optional<LogicalPropertiesProvider> getLogicalPropertiesProvider()
             {
                 return Optional.of(logicalPropertiesProvider);
-            }
-
-            @Override
-            public PlanConstraintsHolder getPlanConstraints()
-            {
-                return PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
             }
         };
     }

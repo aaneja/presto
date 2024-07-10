@@ -43,7 +43,6 @@ import com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerato
 import com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerator.JoinCondition;
 import com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.MultiJoinNode;
 import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.relational.RowExpressionDeterminismEvaluator;
 import com.facebook.presto.sql.tree.SymbolReference;
@@ -308,12 +307,6 @@ public class TestJoinEnumerator
             public Optional<LogicalPropertiesProvider> getLogicalPropertiesProvider()
             {
                 return Optional.empty();
-            }
-
-            @Override
-            public PlanConstraintsHolder getPlanConstraints()
-            {
-                return PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
             }
         };
     }

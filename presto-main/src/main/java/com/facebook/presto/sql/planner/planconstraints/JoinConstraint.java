@@ -13,39 +13,22 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
-import com.facebook.airlift.log.Logger;
 import com.facebook.drift.annotations.ThriftConstructor;
 import com.facebook.drift.annotations.ThriftField;
 import com.facebook.drift.annotations.ThriftStruct;
-import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.JoinDistributionType;
 import com.facebook.presto.spi.plan.JoinType;
-import com.facebook.presto.spi.plan.PlanNode;
-import com.facebook.presto.spi.plan.ProjectNode;
-import com.facebook.presto.sql.planner.iterative.GroupReference;
-import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
 
 import java.util.List;
-import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @ThriftStruct
 public class JoinConstraint
         extends PlanConstraint
 {
-    public static final Pattern TEST_SETUP_TABLE_NAME_PATTERN = Pattern.compile("(\\w+):sf\\d+", Pattern.MULTILINE);
-    public static final Pattern TPCH_TABLE_NAME_PATTERN = Pattern.compile("connectorId='tpch', connectorHandle='(.*?):.*?'", Pattern.MULTILINE);
-    public static final Pattern TPCDS_TABLE_NAME_PATTERN = Pattern.compile("connectorHandle='tpcds:(.*?):.*?'", Pattern.MULTILINE);
-    public static final Pattern HIVE_TABLE_NAME_PATTERN = Pattern.compile("tableName=(.*?),", Pattern.MULTILINE);
-    public static final Pattern ICEBERG_TABLE_NAME_PATTERN = Pattern.compile("connectorHandle='(.*?)\\$data@Optional\\[[0-9]+\\]',", Pattern.MULTILINE);
-    private static final Logger LOG = Logger.get(JoinConstraint.class);
     private final JoinType joinType;
     private final Optional<JoinDistributionType> distributionType;
     private final List<PlanConstraint> children;
@@ -59,78 +42,6 @@ public class JoinConstraint
         this.joinType = joinType;
         this.distributionType = distributionType;
         this.children = children;
-    }
-
-    public static boolean matches(Lookup lookup, PlanConstraint constraint, PlanNode toCompare, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
-    {
-        if (toCompare instanceof GroupReference) {
-            toCompare = lookup.resolve(toCompare);
-        }
-
-        if (constraint instanceof JoinConstraint) {
-            JoinConstraint joinConstraint = (JoinConstraint) constraint;
-            if (toCompare instanceof JoinNode) {
-                JoinNode toMatch = (JoinNode) toCompare;
-                if (toMatch.getType() != joinConstraint.getJoinType() ||
-                        (joinConstraint.getDistributionType().isPresent() && !toMatch.getDistributionType().isPresent()) ||
-                        (joinConstraint.getDistributionType().isPresent() && joinConstraint.getDistributionType().get() != toMatch.getDistributionType().get())) {
-                    return false;
-                }
-                // Current JoinNode matches, check the children
-                return matches(lookup, joinConstraint.getChildren().get(0), toMatch.getLeft(), sourceLocationAliasMap) &&
-                        matches(lookup, joinConstraint.getChildren().get(1), toMatch.getRight(), sourceLocationAliasMap);
-            }
-
-            // The current node, could be a Projection introduced during join reordering
-            if (toCompare instanceof ProjectNode) {
-                return matches(lookup, constraint, ((ProjectNode) toCompare).getSource(), sourceLocationAliasMap);
-            }
-
-            // The current node does not match as-is, check the children for a sub-graph match
-            return matches(lookup, joinConstraint.getChildren().get(0), toCompare, sourceLocationAliasMap) ||
-                    matches(lookup, joinConstraint.getChildren().get(1), toCompare, sourceLocationAliasMap);
-        }
-        else if (constraint instanceof CardinalityConstraint) {
-            CardinalityConstraint cardinalityConstraint = (CardinalityConstraint) constraint;
-            return matches(lookup, cardinalityConstraint.getNode(), toCompare, sourceLocationAliasMap);
-        }
-        else if (constraint instanceof RelationConstraint) {
-            RelationConstraint relationConstraint = (RelationConstraint) constraint;
-
-            if (toCompare.getSourceLocation().isPresent()) {
-                SourceLocation nodeLocation = toCompare.getSourceLocation().get();
-                String alias = findAlias(nodeLocation, sourceLocationAliasMap);
-                LOG.info("Resolved [%s][%d,%d] to alias : %s", toCompare.getClass().getSimpleName(), nodeLocation.getLine(), nodeLocation.getColumn(), alias);
-                return relationConstraint.getName().equalsIgnoreCase(alias);
-            }
-            else {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    private static String findAlias(SourceLocation nodeLocation, NavigableMap<SourceLocation, String> sourceLocationAliasMap)
-    {
-        // Find the first entry that is greater than or equal to the node location
-        SourceLocation aliasStartLocation = sourceLocationAliasMap.floorKey(nodeLocation);
-        if (aliasStartLocation == null) {
-            return null;
-        }
-        return sourceLocationAliasMap.get(aliasStartLocation);
-    }
-
-    // TODO : Enhance this for other connectors as well, this is a hack at the moment
-    private static String extractTableName(String field)
-    {
-        List<Pattern> matchers = ImmutableList.of(TEST_SETUP_TABLE_NAME_PATTERN, TPCH_TABLE_NAME_PATTERN, TPCDS_TABLE_NAME_PATTERN, HIVE_TABLE_NAME_PATTERN, ICEBERG_TABLE_NAME_PATTERN);
-        for (Pattern pattern : matchers) {
-            Matcher matcher = pattern.matcher(field);
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-        }
-        throw new RuntimeException("Unable to extract table name from " + field);
     }
 
     @Override

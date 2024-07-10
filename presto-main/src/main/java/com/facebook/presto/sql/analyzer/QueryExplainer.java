@@ -34,8 +34,6 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.planPrinter.IOPlanPrinter;
 import com.facebook.presto.sql.planner.planPrinter.PlanPrinter;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.sql.planner.sanity.PlanChecker;
 import com.facebook.presto.sql.tree.ExplainType.Type;
 import com.facebook.presto.sql.tree.Expression;
@@ -59,7 +57,6 @@ import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizDi
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizLogicalPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonLogicalPlan;
-import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -228,8 +225,7 @@ public class QueryExplainer
                 warningCollector,
                 statsCalculator,
                 costCalculator,
-                true,
-                new PlanConstraintsHolder(session.getPlanConstraints(), PlanConstraintsParser.extractRelationAliases(statement)));
+                true);
 
         return session.getRuntimeStats().profileNanos(
                 OPTIMIZER_TIME_NANOS,

@@ -40,7 +40,6 @@ import com.facebook.presto.sql.planner.optimizations.PlanOptimizerResult;
 import com.facebook.presto.sql.planner.optimizations.StatsRecordingPlanOptimizer;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.planner.sanity.PlanChecker;
 import com.google.common.base.Splitter;
 
@@ -77,7 +76,6 @@ public class Optimizer
     private final StatsCalculator statsCalculator;
     private final CostCalculator costCalculator;
     private final boolean explain;
-    private final PlanConstraintsHolder planConstraintsHolder;
 
     public Optimizer(
             Session session,
@@ -90,8 +88,7 @@ public class Optimizer
             WarningCollector warningCollector,
             StatsCalculator statsCalculator,
             CostCalculator costCalculator,
-            boolean explain,
-            PlanConstraintsHolder planConstraintsHolder)
+            boolean explain)
     {
         this.session = requireNonNull(session, "session is null");
         this.planOptimizers = requireNonNull(planOptimizers, "planOptimizers is null");
@@ -104,7 +101,6 @@ public class Optimizer
         this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
         this.costCalculator = requireNonNull(costCalculator, "costCalculator is null");
         this.explain = explain;
-        this.planConstraintsHolder = planConstraintsHolder;
     }
 
     public Plan validateAndOptimizePlan(PlanNode root, PlanStage stage)
@@ -118,7 +114,7 @@ public class Optimizer
                     throw new PrestoException(QUERY_PLANNING_TIMEOUT, String.format("The query optimizer exceeded the timeout of %s.", getQueryAnalyzerTimeout(session).toString()));
                 }
                 long start = System.nanoTime();
-                PlanOptimizerResult optimizerResult = optimizer.optimize(root, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, planConstraintsHolder);
+                PlanOptimizerResult optimizerResult = optimizer.optimize(root, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
                 requireNonNull(optimizerResult, format("%s returned a null plan", optimizer.getClass().getName()));
                 if (enableVerboseRuntimeStats || trackOptimizerRuntime(session, optimizer)) {
                     session.getRuntimeStats().addMetricValue(String.format("optimizer%sTimeNanos", getOptimizerNameForLog(optimizer)), NANO, System.nanoTime() - start);
@@ -172,8 +168,8 @@ public class Optimizer
         boolean isTriggered = planOptimizerResult.isOptimizerTriggered();
         boolean isApplicable =
                 isTriggered ||
-                !optimizer.isEnabled(session) && isVerboseOptimizerInfoEnabled(session) &&
-                        optimizer.isApplicable(oldNode, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector, planConstraintsHolder);
+                        !optimizer.isEnabled(session) && isVerboseOptimizerInfoEnabled(session) &&
+                                optimizer.isApplicable(oldNode, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
         boolean isCostBased = isTriggered && optimizer.isCostBased(session);
         String statsSource = optimizer.getStatsSource();
 

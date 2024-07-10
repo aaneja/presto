@@ -265,7 +265,6 @@ import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSched
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static com.facebook.presto.sql.Optimizer.PlanStage.OPTIMIZED_AND_VALIDATED;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
-import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.facebook.presto.sql.testing.TreeAssertions.assertFormattedSql;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
@@ -544,7 +543,7 @@ public class LocalQueryRunner
                 defaultSession.getTracer(),
                 defaultSession.getWarningCollector(),
                 defaultSession.getRuntimeStats(),
-                defaultSession.getPlanConstraints());
+                defaultSession.getPlanConstraintsHolder());
 
         dataDefinitionTask = ImmutableMap.<Class<? extends Statement>, DataDefinitionTask<?>>builder()
                 .put(CreateTable.class, new CreateTableTask())
@@ -1140,8 +1139,7 @@ public class LocalQueryRunner
                 warningCollector,
                 statsCalculator,
                 costCalculator,
-                preparedQuery.getWrappedStatement() instanceof Explain,
-                EMPTY_PLAN_CONSTRAINTS_HOLDER);
+                preparedQuery.getWrappedStatement() instanceof Explain);
 
         return session.getRuntimeStats().profileNanos(
                 OPTIMIZER_TIME_NANOS,

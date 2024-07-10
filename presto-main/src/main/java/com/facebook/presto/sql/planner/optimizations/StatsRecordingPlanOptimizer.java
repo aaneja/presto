@@ -20,7 +20,6 @@ import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.OptimizerStatsRecorder;
 import com.facebook.presto.sql.planner.TypeProvider;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.google.common.annotations.VisibleForTesting;
 
 import static java.util.Objects.requireNonNull;
@@ -50,14 +49,13 @@ public final class StatsRecordingPlanOptimizer
             TypeProvider types,
             VariableAllocator variableAllocator,
             PlanNodeIdAllocator idAllocator,
-            WarningCollector warningCollector,
-            PlanConstraintsHolder planConstraintsHolder)
+            WarningCollector warningCollector)
     {
         PlanOptimizerResult result;
         long duration;
         try {
             long start = System.nanoTime();
-            result = delegate.optimize(plan, session, types, variableAllocator, idAllocator, warningCollector, planConstraintsHolder);
+            result = delegate.optimize(plan, session, types, variableAllocator, idAllocator, warningCollector);
             duration = System.nanoTime() - start;
         }
         catch (RuntimeException e) {
