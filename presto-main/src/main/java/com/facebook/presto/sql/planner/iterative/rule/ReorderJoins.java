@@ -92,6 +92,7 @@ import static com.facebook.presto.sql.planner.PlannerUtils.addProjections;
 import static com.facebook.presto.sql.planner.VariablesExtractor.extractUnique;
 import static com.facebook.presto.sql.planner.iterative.ConfidenceBasedBroadcastUtil.confidenceBasedBroadcast;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isBelowMaxBroadcastSize;
+import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.isNodeBelowMaxBroadCastSize;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.mustPartition;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.INFINITE_COST_RESULT;
 import static com.facebook.presto.sql.planner.iterative.rule.ReorderJoins.JoinEnumerationResult.UNKNOWN_COST_RESULT;

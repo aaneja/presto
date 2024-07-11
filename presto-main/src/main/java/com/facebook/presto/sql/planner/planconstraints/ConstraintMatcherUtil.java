@@ -18,6 +18,7 @@ import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
+import com.facebook.presto.spi.statistics.SourceInfo;
 import com.facebook.presto.sql.planner.iterative.GroupReference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
@@ -27,6 +28,7 @@ import java.util.NavigableMap;
 import java.util.Optional;
 
 import static com.facebook.presto.operator.scalar.MathFunctions.round;
+import static com.facebook.presto.spi.statistics.SourceInfo.ConfidenceLevel.HIGH;
 
 public class ConstraintMatcherUtil
 {
@@ -109,7 +111,7 @@ public class ConstraintMatcherUtil
             PlanNodeStatsEstimate.Builder builder = PlanNodeStatsEstimate.buildFrom(statsEstimate);
             builder.setOutputRowCount(cardinalityAsDouble);
             builder.setTotalSize(totalSize);
-            builder.setConfident(true);
+            builder.setConfidence(HIGH);
             newStatsEstimate = Optional.of(builder.build());
         }
 
