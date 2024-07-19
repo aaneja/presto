@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Objects;
 
 public class SourceLocation
+        implements Comparable<SourceLocation>
 {
     private final int line;
     private final int column;
@@ -74,5 +75,15 @@ public class SourceLocation
     public int hashCode()
     {
         return Objects.hash(line, column);
+    }
+
+    @Override
+    public int compareTo(SourceLocation other)
+    {
+        int lineComparison = Integer.compare(line, other.line);
+        if (lineComparison != 0) {
+            return lineComparison;
+        }
+        return Integer.compare(column, other.column);
     }
 }

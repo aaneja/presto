@@ -13,11 +13,16 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
+import com.facebook.presto.spi.SourceLocation;
+import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.tree.Statement;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.TreeMap;
 
 import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
@@ -25,6 +30,7 @@ import static com.facebook.presto.spi.plan.JoinType.INNER;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.constraintsMarkerEnd;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.constraintsMarkerStart;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.parse;
+import static javax.swing.UIManager.put;
 import static org.testng.Assert.assertEquals;
 
 public class TestPlanConstraintsParser
@@ -231,5 +237,24 @@ public class TestPlanConstraintsParser
                                         new RelationConstraint("D"),
                                         new RelationConstraint("E"))))),
                 new CardinalityEstimate(10)));
+    }
+
+    @Test
+    public void TestAliasLocationVisitor()
+    {
+        String query = "with common as (select a1,b1 from t1)\n" +
+                "select 1 from common x join common y on x.a1=y.a1\n" +
+                "where x.b1 < 1000 and y.b1 > 0";
+        Statement statement = new SqlParser().createStatement(query);
+        PlanConstraintsParser.AliasLocationVisitor visitor = new PlanConstraintsParser.AliasLocationVisitor();
+        statement.accept(visitor, null);
+
+        TreeMap<SourceLocation, String> expectedMap = new TreeMap<>(ImmutableMap.of(
+                new SourceLocation(1, 6), "common",
+                new SourceLocation(1, 35), "t1",
+                new SourceLocation(2, 15), "x",
+                new SourceLocation(2, 29), "y"
+        ));
+        assertEquals(visitor.getSourceLocationAliasMap(), expectedMap);
     }
 }

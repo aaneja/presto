@@ -40,6 +40,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 
@@ -338,6 +339,8 @@ public final class SessionRepresentation
                 Optional.empty(),
                 // we use NOOP to create a session from the representation as worker does not require warning collectors
                 WarningCollector.NOOP,
-                new RuntimeStats());
+                new RuntimeStats(),
+                // Workers don't need to be aware of any plan constraints
+                EMPTY_PLAN_CONSTRAINTS_HOLDER);
     }
 }

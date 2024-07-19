@@ -38,6 +38,7 @@ import com.facebook.presto.spi.tracing.Tracer;
 import com.facebook.presto.sql.analyzer.CTEInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerInformationCollector;
 import com.facebook.presto.sql.planner.optimizations.OptimizerResultCollector;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -65,6 +66,7 @@ import static com.facebook.presto.SystemSessionProperties.warnOnCommonNanPattern
 import static com.facebook.presto.spi.ConnectorId.createInformationSchemaConnectorId;
 import static com.facebook.presto.spi.ConnectorId.createSystemTablesConnectorId;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder.EMPTY_PLAN_CONSTRAINTS_HOLDER;
 import static com.facebook.presto.util.Failures.checkCondition;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -105,6 +107,7 @@ public final class Session
     private final CTEInformationCollector cteInformationCollector = new CTEInformationCollector();
     private final Map<PlanNodeId, PlanNodeStatsEstimate> planNodeStatsMap = new HashMap<>();
     private final Map<PlanNodeId, PlanCostEstimate> planNodeCostMap = new HashMap<>();
+    private final PlanConstraintsHolder planConstraintsHolder;
 
     public Session(
             QueryId queryId,
@@ -131,7 +134,8 @@ public final class Session
             Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions,
             Optional<Tracer> tracer,
             WarningCollector warningCollector,
-            RuntimeStats runtimeStats)
+            RuntimeStats runtimeStats,
+            PlanConstraintsHolder planConstraintsHolder)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.transactionId = requireNonNull(transactionId, "transactionId is null");
@@ -173,6 +177,7 @@ public final class Session
         this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
         this.runtimeStats = requireNonNull(runtimeStats, "runtimeStats is null");
         this.context = new AccessControlContext(queryId, clientInfo, clientTags, source, warningCollector, runtimeStats);
+        this.planConstraintsHolder = requireNonNull(planConstraintsHolder, "planConstraintsHolder is null");
     }
 
     public QueryId getQueryId()
@@ -353,6 +358,11 @@ public final class Session
         return planNodeCostMap;
     }
 
+    public PlanConstraintsHolder getPlanConstraintsHolder()
+    {
+        return planConstraintsHolder;
+    }
+
     public Session beginTransactionId(TransactionId transactionId, TransactionManager transactionManager, AccessControl accessControl)
     {
         requireNonNull(transactionId, "transactionId is null");
@@ -447,7 +457,8 @@ public final class Session
                 sessionFunctions,
                 tracer,
                 warningCollector,
-                runtimeStats);
+                runtimeStats,
+                planConstraintsHolder);
     }
 
     public Session withDefaultProperties(
@@ -503,7 +514,8 @@ public final class Session
                 sessionFunctions,
                 tracer,
                 warningCollector,
-                runtimeStats);
+                runtimeStats,
+                planConstraintsHolder);
     }
 
     public ConnectorSession toConnectorSession()
@@ -591,6 +603,7 @@ public final class Session
                 .add("clientTags", clientTags)
                 .add("resourceEstimates", resourceEstimates)
                 .add("startTime", startTime)
+                .add("planConstraintsHolder", planConstraintsHolder)
                 .omitNullValues()
                 .toString();
     }
@@ -632,6 +645,7 @@ public final class Session
         private final Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions = new HashMap<>();
         private WarningCollector warningCollector = WarningCollector.NOOP;
         private RuntimeStats runtimeStats = new RuntimeStats();
+        private PlanConstraintsHolder planConstraintsHolder = EMPTY_PLAN_CONSTRAINTS_HOLDER;
 
         private SessionBuilder(SessionPropertyManager sessionPropertyManager)
         {
@@ -665,6 +679,7 @@ public final class Session
             this.tracer = requireNonNull(session.tracer, "tracer is null");
             this.warningCollector = requireNonNull(session.warningCollector, "warningCollector is null");
             this.runtimeStats = requireNonNull(session.runtimeStats, "runtimeStats is null");
+            this.planConstraintsHolder = requireNonNull(session.planConstraintsHolder, "planConstraints is null");
         }
 
         public SessionBuilder setQueryId(QueryId queryId)
@@ -821,6 +836,12 @@ public final class Session
             return this;
         }
 
+        public SessionBuilder setPlanConstraintHolder(PlanConstraintsHolder planConstraintsHolder)
+        {
+            this.planConstraintsHolder = planConstraintsHolder;
+            return this;
+        }
+
         public <T> T getSystemProperty(String name, Class<T> type)
         {
             return sessionPropertyManager.decodeSystemPropertyValue(name, systemProperties.get(name), type);
@@ -853,7 +874,8 @@ public final class Session
                     sessionFunctions,
                     tracer,
                     warningCollector,
-                    runtimeStats);
+                    runtimeStats,
+                    planConstraintsHolder);
         }
     }
 
