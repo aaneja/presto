@@ -23,6 +23,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.SchemaTableName;
+import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.constraints.TableConstraint;
@@ -196,7 +197,12 @@ public class PlanBuilder
 
     public ValuesNode values()
     {
-        return values(idAllocator.getNextId(), ImmutableList.of(), ImmutableList.of());
+        return values(idAllocator.getNextId(), Optional.empty(), ImmutableList.of(), ImmutableList.of());
+    }
+
+    public ValuesNode values(SourceLocation sourceLocation)
+    {
+        return values(idAllocator.getNextId(), Optional.of(sourceLocation), ImmutableList.of(), ImmutableList.of());
     }
 
     public ValuesNode values(VariableReferenceExpression... columns)
@@ -219,18 +225,24 @@ public class PlanBuilder
         List<VariableReferenceExpression> variables = ImmutableList.copyOf(columns);
         return values(
                 id,
+                Optional.empty(),
                 variables,
                 nElements(rows, row -> nElements(columns.length, cell -> constantNull(variables.get(cell).getSourceLocation(), UNKNOWN))));
     }
 
     public ValuesNode values(List<VariableReferenceExpression> variables, List<List<RowExpression>> rows)
     {
-        return values(idAllocator.getNextId(), variables, rows);
+        return values(idAllocator.getNextId(), Optional.empty(), variables, rows);
     }
 
     public ValuesNode values(PlanNodeId id, List<VariableReferenceExpression> variables, List<List<RowExpression>> rows)
     {
-        return new ValuesNode(Optional.empty(), id, variables, rows, Optional.empty());
+        return values(id, Optional.empty(), variables, rows);
+    }
+
+    public ValuesNode values(PlanNodeId id, Optional<SourceLocation> sourceLocation, List<VariableReferenceExpression> variables, List<List<RowExpression>> rows)
+    {
+        return new ValuesNode(sourceLocation, id, variables, rows, Optional.empty());
     }
 
     public EnforceSingleRowNode enforceSingleRow(PlanNode source)
@@ -760,6 +772,20 @@ public class PlanBuilder
         {
             return new ExchangeNode(Optional.empty(), idAllocator.getNextId(), type, scope, partitioningScheme, sources, inputs, ensureSourceOrdering, Optional.ofNullable(orderingScheme));
         }
+    }
+
+    public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, JoinDistributionType joinDistributionType)
+    {
+        return join(joinType,
+                left,
+                right,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(joinDistributionType),
+                ImmutableMap.of());
     }
 
     public JoinNode join(JoinType joinType, PlanNode left, PlanNode right, EquiJoinClause... criteria)

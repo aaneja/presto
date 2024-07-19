@@ -27,6 +27,7 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spiller.NodeSpillConfig;
 import com.facebook.presto.sql.Optimizer;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
+import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.RuleStatsRecorder;
 import com.facebook.presto.sql.planner.SubPlan;
@@ -35,6 +36,8 @@ import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantIdentityPro
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PruneUnreferencedOutputs;
 import com.facebook.presto.sql.planner.optimizations.UnaliasSymbolReferences;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,6 +56,7 @@ import java.util.function.Predicate;
 
 import static com.facebook.airlift.testing.Closeables.closeAllRuntimeException;
 import static com.facebook.presto.sql.Optimizer.PlanStage.CREATED;
+import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.parse;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS;
 import static com.google.common.base.Strings.nullToEmpty;
@@ -359,6 +363,14 @@ public class BasePlanTest
     protected Metadata getMetadata()
     {
         return getQueryRunner().getMetadata();
+    }
+
+    protected Session buildSessionWithConstraint(String query)
+    {
+        return Session.builder(getQueryRunner().getDefaultSession())
+                .setPlanConstraintHolder(new PlanConstraintsHolder(
+                        parse(query),
+                        PlanConstraintsParser.extractRelationAliases(new SqlParser().createStatement(query)))).build();
     }
 
     public interface LocalQueryRunnerSupplier

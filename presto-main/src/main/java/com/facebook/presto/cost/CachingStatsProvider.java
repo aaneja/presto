@@ -20,6 +20,8 @@ import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.GroupReference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Memo;
+import com.facebook.presto.sql.planner.planconstraints.CardinalityConstraint;
+import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -28,8 +30,10 @@ import java.util.Optional;
 import static com.facebook.presto.SystemSessionProperties.isEnableStatsCalculator;
 import static com.facebook.presto.SystemSessionProperties.isIgnoreStatsCalculatorFailures;
 import static com.facebook.presto.sql.planner.iterative.Lookup.noLookup;
+import static com.facebook.presto.sql.planner.planconstraints.ConstraintMatcherUtil.getStatsEstimate;
 import static com.google.common.base.Verify.verify;
 import static java.util.Objects.requireNonNull;
+import static org.apache.ratis.thirdparty.com.google.common.collect.ImmutableList.toImmutableList;
 
 public final class CachingStatsProvider
         implements StatsProvider
@@ -81,6 +85,7 @@ public final class CachingStatsProvider
             }
 
             stats = statsCalculator.calculateStats(node, this, lookup, session, types);
+            stats = getStatsFromPlanConstraints(node, stats, lookup).orElse(stats);
             verify(cache.put(node, stats) == null, "Stats already set");
             session.getPlanNodeStatsMap().put(node.getId(), stats);
             return stats;
@@ -104,9 +109,23 @@ public final class CachingStatsProvider
             return stats.get();
         }
 
-        PlanNodeStatsEstimate groupStats = statsCalculator.calculateStats(memo.getNode(group), this, lookup, session, types);
+        PlanNode node = memo.getNode(group);
+        PlanNodeStatsEstimate groupStats = statsCalculator.calculateStats(node, this, lookup, session, types);
+        groupStats = getStatsFromPlanConstraints(node, groupStats, lookup).orElse(groupStats);
         verify(!memo.getStats(group).isPresent(), "Group stats already set");
         memo.storeStats(group, groupStats);
         return groupStats;
+    }
+
+    private Optional<PlanNodeStatsEstimate> getStatsFromPlanConstraints(PlanNode planNode, PlanNodeStatsEstimate statsEstimate, Lookup lookup)
+    {
+        PlanConstraintsHolder planConstraintsHolder = session.getPlanConstraintsHolder();
+        return getStatsEstimate(planConstraintsHolder.getPlanConstraints().stream()
+                        .filter(CardinalityConstraint.class::isInstance)
+                        .map(CardinalityConstraint.class::cast)
+                        .collect(toImmutableList()),
+                planConstraintsHolder.getSourceLocationAliasMap(),
+                planNode,
+                statsEstimate, lookup);
     }
 }

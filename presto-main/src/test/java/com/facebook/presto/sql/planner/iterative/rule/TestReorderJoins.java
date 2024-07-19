@@ -74,12 +74,11 @@ import static com.facebook.presto.sql.relational.Expressions.variable;
 public class TestReorderJoins
         extends BasePlanTest
 {
-    private RuleTester tester;
-    private FunctionResolution functionResolution;
-
     // TWO_ROWS are used to prevent node from being scalar
     private static final ImmutableList<List<RowExpression>> TWO_ROWS = ImmutableList.of(ImmutableList.of(), ImmutableList.of());
     private static final QualifiedName RANDOM = QualifiedName.of("random");
+    private RuleTester tester;
+    private FunctionResolution functionResolution;
 
     @DataProvider
     public static Object[][] tableSpecificationPermutations()
@@ -900,6 +899,92 @@ public class TestReorderJoins
                                                                         tableScan("supplier", ImmutableMap.of("S_ACCTBAL", "acctbal", "S_SUPPKEY", "suppkey")))))),
                                         anyTree(
                                                 tableScan("part", ImmutableMap.of("P_PARTKEY", "partkey")))))));
+    }
+
+    @Test
+    public void testJoinOrderForcedAsPerPlanConstraint()
+    {
+
+        // Force a poor REPLICATED join with a larger build side
+        String testQuery = "/*! join ( o l ) [R] */ select 1 from lineitem l, orders o where l.orderkey = o.orderkey";
+        Session constrainedSession = buildSessionWithConstraint(testQuery);
+
+        assertPlan(testQuery, constrainedSession,
+                anyTree(
+                        join(INNER,
+                                ImmutableList.of(equiJoinClause("O_ORDERKEY", "L_ORDERKEY")),
+                                Optional.empty(),
+                                Optional.of(REPLICATED),
+                                anyTree(
+                                        tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))),
+                                anyTree(
+                                        tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))))));
+
+        // Force a 4-table JOIN that includes 2 CrossJoins for a fully connected join graph
+        testQuery = "/*! join ((s prt) (ps c)) */ select 1 from supplier s, partsupp ps, customer c, part prt" +
+                " where s.suppkey = ps.suppkey and ps.partkey = prt.partkey and s.nationkey = c.nationkey";
+        constrainedSession = buildSessionWithConstraint(testQuery);
+        assertPlan(testQuery,
+                constrainedSession,
+                anyTree(
+                        join(
+                                anyTree(
+                                        join(tableScan("supplier"),
+                                                anyTree(
+                                                        tableScan("part")))),
+                                anyTree(
+                                        join(tableScan("partsupp"),
+                                                anyTree(
+                                                        tableScan("customer")))))));
+
+        // By default, the (lineitem IJ orders) equi join is ignored by ReorderJoins since the CrossJoin with supplier is costed as INFINITE
+        // We can force the better plan with a constraint
+        // Related issue : #19894
+        testQuery = "/*! join (s (l o)) */ select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey";
+        constrainedSession = buildSessionWithConstraint(testQuery);
+
+        assertPlan(testQuery, constrainedSession,
+                anyTree(
+                        join(INNER,
+                                ImmutableList.of(),
+                                tableScan("supplier"),
+                                anyTree(
+                                        join(INNER,
+                                                ImmutableList.of(equiJoinClause("L_ORDERKEY", "O_ORDERKEY")),
+                                                anyTree(
+                                                        tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))),
+                                                anyTree(
+                                                        tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
+
+        /* cases to add :
+        1. Force join for only part of the tree
+        2. Force join under an aggregation
+
+
+         */
+
+
+        // {
+        //     // If we only specify the (lineitem IJ orders) we don't get a fully constrained plan
+        //     JoinConstraint constraint = new JoinConstraint(INNER,
+        //             Optional.empty(),
+        //             ImmutableList.of(new RelationConstraint("lineitem"), new RelationConstraint("orders")));
+        //
+        //     Session constrainedSession = Session.builder(tester.getSession()).addPlanConstraints(ImmutableList.of(constraint)).build();
+        //
+        //     assertPlan("select 1 from supplier s, lineitem l, orders o where l.orderkey = o.orderkey", constrainedSession,
+        //             anyTree(
+        //                     join(INNER,
+        //                             ImmutableList.of(),
+        //                             tableScan("supplier"),
+        //                             anyTree(
+        //                                     join(INNER,
+        //                                             ImmutableList.of(equiJoinClause("L_ORDERKEY", "O_ORDERKEY")),
+        //                                             anyTree(
+        //                                                     tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))),
+        //                                             anyTree(
+        //                                                     tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
+        // }
     }
 
     @Test
