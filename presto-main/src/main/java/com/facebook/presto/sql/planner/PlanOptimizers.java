@@ -29,6 +29,7 @@ import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesPro
 import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregations;
 import com.facebook.presto.sql.planner.iterative.rule.AddNotNullFiltersToJoinNode;
 import com.facebook.presto.sql.planner.iterative.rule.CombineApproxPercentileFunctions;
+import com.facebook.presto.sql.planner.iterative.rule.CombineJoinsByConnector;
 import com.facebook.presto.sql.planner.iterative.rule.CreatePartialTopN;
 import com.facebook.presto.sql.planner.iterative.rule.CrossJoinWithArrayContainsToInnerJoin;
 import com.facebook.presto.sql.planner.iterative.rule.CrossJoinWithArrayNotContainsToAntiJoin;
@@ -756,7 +757,9 @@ public class PlanOptimizers
                 ruleStats,
                 statsCalculator,
                 estimatedExchangesCostCalculator,
-                ImmutableSet.of(new ReorderJoins(costComparator, metadata))));
+                ImmutableSet.of(
+                        new CombineJoinsByConnector(metadata),
+                        new ReorderJoins(costComparator, metadata))));
 
         // After ReorderJoins, `statsEquivalentPlanNode` will be unassigned to intermediate join nodes.
         // We run it again to mark this for intermediate join nodes.
