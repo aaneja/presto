@@ -155,6 +155,7 @@ import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.JoinPrefilter;
 import com.facebook.presto.sql.planner.optimizations.KeyBasedSampler;
 import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
+import com.facebook.presto.sql.planner.optimizations.LogPlanTreeOptimizer;
 import com.facebook.presto.sql.planner.optimizations.LogicalCteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MergeJoinForSortedInputOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MergePartialAggregationsWithFilter;
@@ -347,6 +348,7 @@ public class PlanOptimizers
         PlanOptimizer predicatePushDown = new StatsRecordingPlanOptimizer(optimizerStats, new PredicatePushDown(metadata, sqlParser, featuresConfig.isNativeExecutionEnabled()));
         PlanOptimizer prefilterForLimitingAggregation = new StatsRecordingPlanOptimizer(optimizerStats, new PrefilterForLimitingAggregation(metadata, statsCalculator));
 
+        builder.add(new LogPlanTreeOptimizer("At start"));
         builder.add(
                 new IterativeOptimizer(
                         metadata,
@@ -545,7 +547,10 @@ public class PlanOptimizers
                         statsCalculator,
                         estimatedExchangesCostCalculator,
                         ImmutableSet.of(new RewriteAggregationIfToFilter(metadata.getFunctionAndTypeManager()))),
+                new LogPlanTreeOptimizer("Before first predicate pushdown"),
                 predicatePushDown,
+                new LogPlanTreeOptimizer("After first predicate pushdown"),
+
                 new IterativeOptimizer(
                         metadata,
                         ruleStats,
