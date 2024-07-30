@@ -781,7 +781,7 @@ class QueryPlanner
         groupIdVariable.ifPresent(groupingKeys::add);
 
         AggregationNode aggregationNode = new AggregationNode(
-                subPlan.getRoot().getSourceLocation(),
+                getSourceLocation(node),
                 idAllocator.getNextId(),
                 subPlan.getRoot(),
                 aggregations,

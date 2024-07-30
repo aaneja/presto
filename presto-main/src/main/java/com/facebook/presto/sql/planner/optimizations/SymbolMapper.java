@@ -174,7 +174,7 @@ public class SymbolMapper
         }
 
         return new AggregationNode(
-                source.getSourceLocation(),
+                node.getSourceLocation(),
                 newNodeId,
                 source,
                 aggregations.build(),
