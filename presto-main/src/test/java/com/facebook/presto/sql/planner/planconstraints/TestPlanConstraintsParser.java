@@ -30,7 +30,6 @@ import static com.facebook.presto.spi.plan.JoinType.INNER;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.constraintsMarkerEnd;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.constraintsMarkerStart;
 import static com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser.parse;
-import static javax.swing.UIManager.put;
 import static org.testng.Assert.assertEquals;
 
 public class TestPlanConstraintsParser
@@ -246,7 +245,7 @@ public class TestPlanConstraintsParser
                 "select 1 from common x join common y on x.a1=y.a1\n" +
                 "where x.b1 < 1000 and y.b1 > 0";
         Statement statement = new SqlParser().createStatement(query);
-        PlanConstraintsParser.AliasLocationVisitor visitor = new PlanConstraintsParser.AliasLocationVisitor();
+        RelationAliasExtractor.AliasLocationVisitor visitor = new RelationAliasExtractor.AliasLocationVisitor();
         statement.accept(visitor, null);
 
         TreeMap<SourceLocation, String> expectedMap = new TreeMap<>(ImmutableMap.of(

@@ -45,6 +45,7 @@ import com.facebook.presto.sql.analyzer.BuiltInQueryPreparer;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraint;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
+import com.facebook.presto.sql.planner.planconstraints.RelationAliasExtractor;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.util.concurrent.AbstractFuture;
@@ -302,7 +303,7 @@ public class DispatchManager
                 session = Session.builder(session).setPlanConstraintHolder(
                                 new PlanConstraintsHolder(
                                         planConstraints,
-                                        PlanConstraintsParser.extractRelationAliases(statement))).build();
+                                        RelationAliasExtractor.extractRelationAliases(statement))).build();
             }
 
             // select resource group

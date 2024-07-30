@@ -346,6 +346,7 @@ public class PlanOptimizers
         PlanOptimizer prefilterForLimitingAggregation = new StatsRecordingPlanOptimizer(optimizerStats, new PrefilterForLimitingAggregation(metadata, statsCalculator));
 
         builder.add(
+                new LogPlanTreeOptimizer("At planning start"),
                 new IterativeOptimizer(
                         metadata,
                         ruleStats,
@@ -739,7 +740,9 @@ public class PlanOptimizers
         // After this step, nodes with same `statsEquivalentPlanNode` will share same history based statistics.
         builder.add(new StatsRecordingPlanOptimizer(optimizerStats, new HistoricalStatisticsEquivalentPlanMarkingOptimizer(statsCalculator)));
 
-        builder.add(new IterativeOptimizer(
+        builder.add(
+                new LogPlanTreeOptimizer("Just before ReOrder joins"),
+                new IterativeOptimizer(
                 metadata,
                 // Because ReorderJoins runs only once,
                 // PredicatePushDown, PruneUnreferencedOutputs and RemoveRedundantIdentityProjections

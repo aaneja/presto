@@ -13,19 +13,8 @@
  */
 package com.facebook.presto.sql.planner.planconstraints;
 
-import com.facebook.airlift.log.Logger;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.spi.plan.JoinDistributionType;
-import com.facebook.presto.sql.tree.AliasedRelation;
-import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.Node;
-import com.facebook.presto.sql.tree.NodeLocation;
-import com.facebook.presto.sql.tree.Statement;
-import com.facebook.presto.sql.tree.Table;
-import com.facebook.presto.sql.tree.WithQuery;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import java.io.IOException;
@@ -33,10 +22,8 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.TreeMap;
 
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
@@ -74,13 +61,6 @@ public final class PlanConstraintsParser
         catch (IOException e) {
             throw new PrestoException(GENERIC_USER_ERROR, "Invalid join constraint");
         }
-    }
-
-    public static NavigableMap<SourceLocation, String> extractRelationAliases(Statement statement)
-    {
-        AliasLocationVisitor aliasExtractor = new AliasLocationVisitor();
-        aliasExtractor.process(statement);
-        return aliasExtractor.getSourceLocationAliasMap();
     }
 
     private static List<PlanConstraint> parseInternal(String constraintsString)
@@ -388,53 +368,6 @@ public final class PlanConstraintsParser
         public ConstraintType getConstraintType()
         {
             return constraintType;
-        }
-    }
-
-    @VisibleForTesting
-    public static class AliasLocationVisitor
-            extends DefaultTraversalVisitor<Void, Void>
-    {
-        TreeMap<SourceLocation, String> sourceLocationAliasMap = new TreeMap<>();
-
-        private void recordAlias(Node node, String alias)
-        {
-            Preconditions.checkState(node.getLocation().isPresent(), "Node location is missing for node %s", node);
-            NodeLocation nodeLocation = node.getLocation().get();
-            SourceLocation asSourceLocation = new SourceLocation(nodeLocation.getLineNumber(), nodeLocation.getColumnNumber());
-            if (!sourceLocationAliasMap.containsKey(asSourceLocation)) {
-                sourceLocationAliasMap.put(asSourceLocation, alias);
-            }
-        }
-
-        public TreeMap<SourceLocation, String> getSourceLocationAliasMap()
-        {
-            return sourceLocationAliasMap;
-        }
-
-        @Override
-        protected Void visitAliasedRelation(AliasedRelation node, Void context)
-        {
-            String alias = node.getAlias().toString();
-            recordAlias(node, alias);
-
-            return super.visitAliasedRelation(node, context);
-        }
-
-        @Override
-        protected Void visitWithQuery(WithQuery node, Void context)
-        {
-            String alias = node.getName().toString();
-            recordAlias(node, alias);
-            return super.visitWithQuery(node, context);
-        }
-
-        @Override
-        protected Void visitTable(Table node, Void context)
-        {
-            String alias = node.getName().toString();
-            recordAlias(node, alias);
-            return super.visitTable(node, context);
         }
     }
 }

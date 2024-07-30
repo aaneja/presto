@@ -37,7 +37,7 @@ import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PruneUnreferencedOutputs;
 import com.facebook.presto.sql.planner.optimizations.UnaliasSymbolReferences;
 import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsHolder;
-import com.facebook.presto.sql.planner.planconstraints.PlanConstraintsParser;
+import com.facebook.presto.sql.planner.planconstraints.RelationAliasExtractor;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -370,7 +370,7 @@ public class BasePlanTest
         return Session.builder(getQueryRunner().getDefaultSession())
                 .setPlanConstraintHolder(new PlanConstraintsHolder(
                         parse(query),
-                        PlanConstraintsParser.extractRelationAliases(new SqlParser().createStatement(query)))).build();
+                        RelationAliasExtractor.extractRelationAliases(new SqlParser().createStatement(query)))).build();
     }
 
     public interface LocalQueryRunnerSupplier
