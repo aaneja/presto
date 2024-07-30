@@ -52,6 +52,8 @@ import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.metadata.FunctionAndTypeManager.qualifyObjectName;
+import static com.facebook.presto.spi.plan.AggregationNode.Step.FINAL;
+import static com.facebook.presto.spi.plan.AggregationNode.Step.PARTIAL;
 import static com.facebook.presto.spi.plan.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
@@ -60,10 +62,12 @@ import static com.facebook.presto.spi.statistics.SourceInfo.ConfidenceLevel.HIGH
 import static com.facebook.presto.spi.statistics.SourceInfo.ConfidenceLevel.LOW;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.AUTOMATIC;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.aggregation;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJoinClause;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expression;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.filter;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.functionCall;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
@@ -955,6 +959,27 @@ public class TestReorderJoins
                                                         tableScan("lineitem", ImmutableMap.of("L_ORDERKEY", "orderkey"))),
                                                 anyTree(
                                                         tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
+
+        // The default join order is ((c n) cte). This is because the planner cannot determine the cardinality of the `cte` node. See #issue
+        // Since we know that the cardinality of the `cte` is 1, we can force a better join order
+        testQuery = "/*! join ((c cte) n) */ with cte as (select min(orderkey) as min from orders) select count(*) from customer c, nation n, cte where c.custkey=cte.min and n.nationkey=c.nationkey";
+        constrainedSession = buildSessionWithConstraint(testQuery);
+        assertPlan(testQuery, constrainedSession,
+                anyTree(
+                        join(INNER,
+                                ImmutableList.of(equiJoinClause("c_nationkey", "nationkey")),
+                                anyTree(join(INNER,
+                                        ImmutableList.of(equiJoinClause("custkey", "final_min")),
+                                        anyTree(tableScan("customer", ImmutableMap.of("custkey", "custkey","c_nationkey", "nationkey"))),
+                                        anyTree(aggregation(
+                                                        ImmutableMap.of("final_min", functionCall("min", ImmutableList.of("partial_min"))),
+                                                        FINAL,
+                                                        anyTree(
+                                                                aggregation(
+                                                                        ImmutableMap.of("partial_min", functionCall("min", ImmutableList.of("orderkey"))),
+                                                                        PARTIAL,
+                                                                        tableScan("orders", ImmutableMap.of("orderkey", "orderkey")))))))),
+                                anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey"))))));
 
         /* cases to add :
         1. Force join for only part of the tree
