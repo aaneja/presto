@@ -120,7 +120,6 @@ public class ConstraintMatcherUtil
             Lookup lookup)
     {
         for (CardinalityConstraint constraint : cardinalityConstraints) {
-            // TODO : Fix me, We need to plumb the source location to alias map
             if (matches(lookup, constraint, planNode, sourceLocationAliasMap)) {
                 return Optional.of(constraint.getCardinalityEstimate().getCardinality());
             }

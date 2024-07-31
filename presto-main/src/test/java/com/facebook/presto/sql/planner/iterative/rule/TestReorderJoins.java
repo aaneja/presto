@@ -960,26 +960,37 @@ public class TestReorderJoins
                                                 anyTree(
                                                         tableScan("orders", ImmutableMap.of("O_ORDERKEY", "orderkey"))))))));
 
-        // The default join order is ((c n) cte). This is because the planner cannot determine the cardinality of the `cte` node. See #issue
+
+        PlanMatchPattern matchPattern = anyTree(
+                join(INNER,
+                        ImmutableList.of(equiJoinClause("c_nationkey", "nationkey")),
+                        anyTree(join(INNER,
+                                ImmutableList.of(equiJoinClause("custkey", "final_min")),
+                                anyTree(tableScan("customer", ImmutableMap.of("custkey", "custkey", "c_nationkey", "nationkey"))),
+                                anyTree(aggregation(
+                                        ImmutableMap.of("final_min", functionCall("min", ImmutableList.of("partial_min"))),
+                                        FINAL,
+                                        anyTree(
+                                                aggregation(
+                                                        ImmutableMap.of("partial_min", functionCall("min", ImmutableList.of("orderkey"))),
+                                                        PARTIAL,
+                                                        tableScan("orders", ImmutableMap.of("orderkey", "orderkey")))))))),
+                        anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))));
+
+        // The default join order is ((c n) cte). This is because the planner returns the cardinality of the `cte` node as UNKNOWN. See issue #19354
         // Since we know that the cardinality of the `cte` is 1, we can force a better join order
-        testQuery = "/*! join ((c cte) n) */ with cte as (select min(orderkey) as min from orders) select count(*) from customer c, nation n, cte where c.custkey=cte.min and n.nationkey=c.nationkey";
+        testQuery = "/*! join ((c cte) n) */ with cte as (select min(orderkey) as min from orders) " +
+                " select count(*) from customer c, nation n, cte where c.custkey=cte.min and n.nationkey=c.nationkey";
         constrainedSession = buildSessionWithConstraint(testQuery);
-        assertPlan(testQuery, constrainedSession,
-                anyTree(
-                        join(INNER,
-                                ImmutableList.of(equiJoinClause("c_nationkey", "nationkey")),
-                                anyTree(join(INNER,
-                                        ImmutableList.of(equiJoinClause("custkey", "final_min")),
-                                        anyTree(tableScan("customer", ImmutableMap.of("custkey", "custkey","c_nationkey", "nationkey"))),
-                                        anyTree(aggregation(
-                                                        ImmutableMap.of("final_min", functionCall("min", ImmutableList.of("partial_min"))),
-                                                        FINAL,
-                                                        anyTree(
-                                                                aggregation(
-                                                                        ImmutableMap.of("partial_min", functionCall("min", ImmutableList.of("orderkey"))),
-                                                                        PARTIAL,
-                                                                        tableScan("orders", ImmutableMap.of("orderkey", "orderkey")))))))),
-                                anyTree(tableScan("nation", ImmutableMap.of("nationkey", "nationkey"))))));
+        assertPlan(testQuery, constrainedSession, matchPattern);
+
+        // We can also guide the same join order by specifying a partial join order
+        // We also need to specify the cardinality of the sub-plan node, because Presto cannot infer it
+        testQuery = "/*! join (c cte) card ((c cte) 1500) */ with cte as (select min(orderkey) as min from orders) " +
+                " select count(*) from customer c, nation n, cte where c.custkey=cte.min and n.nationkey=c.nationkey";
+        constrainedSession = buildSessionWithConstraint(testQuery);
+        assertPlan(testQuery, constrainedSession, matchPattern);
+
 
         /* cases to add :
         1. Force join for only part of the tree
@@ -987,7 +998,6 @@ public class TestReorderJoins
 
 
          */
-
 
         // {
         //     // If we only specify the (lineitem IJ orders) we don't get a fully constrained plan
