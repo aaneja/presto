@@ -20,6 +20,7 @@ import com.facebook.presto.spi.relation.DeterminismEvaluator;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.CanonicalJoinNode;
+import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.JoinNode;
@@ -34,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +55,7 @@ import static com.facebook.presto.sql.planner.plan.Patterns.join;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.util.Objects.requireNonNull;
 
@@ -65,6 +66,7 @@ public class CombineJoinsByConnector
     private final FunctionResolution functionResolution;
     private final DeterminismEvaluator determinismEvaluator;
     private final Logger LOG = Logger.get(CombineJoinsByConnector.class);
+    private final Metadata metadata;
 
     @Override
     public Pattern<JoinNode> getPattern()
@@ -74,6 +76,7 @@ public class CombineJoinsByConnector
 
     public CombineJoinsByConnector(Metadata metadata)
     {
+        this.metadata = metadata;
         this.functionResolution = new FunctionResolution(metadata.getFunctionAndTypeManager().getFunctionAndTypeResolver());
         this.determinismEvaluator = new RowExpressionDeterminismEvaluator(metadata.getFunctionAndTypeManager());
         this.joinNodePattern = join().matching(
@@ -141,6 +144,9 @@ public class CombineJoinsByConnector
     {
         ImmutableList.Builder<PlanNode> rewrittenSources = ImmutableList.builder();
         List<RowExpression> overallPredicates = new ArrayList<>(LogicalRowExpressions.extractConjuncts(multiJoinNode.getFilter()));
+        EqualityInference filterEqualityInference = new EqualityInference.Builder(metadata)
+                .addEqualityInference(multiJoinNode.getFilter())
+                .build();
         Map<ConnectorId, List<PlanNode>> sourcesByConnector = new HashMap<>();
 
         for (PlanNode source : multiJoinNode.getSources()) {
@@ -156,8 +162,8 @@ public class CombineJoinsByConnector
         }
 
         sourcesByConnector.forEach(((connectorId, planNodes) -> {
-            PlanNode newSource = getNewTableScanNode(lookup, connectorId, planNodes, overallPredicates);
-            rewrittenSources.add(newSource);
+            List<PlanNode> newSources = getNewTableScanNode(connectorId, planNodes, filterEqualityInference);
+            rewrittenSources.addAll(newSources);
         }));
 
         return new MultiJoinNode(
@@ -168,64 +174,66 @@ public class CombineJoinsByConnector
     }
 
     /**
-     * Combine the planNodes to a new TableScanNode that represents the pushed down join predicate
-     * This requires -
-     * 0. Get all the relation names that must be combined
-     * 1. Combining the outputs of the {@code nodesToCombine} plan nodes
-     * 2. Extracting all predicates from {@code overallPredicates} that *only* refer to variables that are outputed from this new TableScanNode
-     * 3. Any remaining predicates are left as-is
-     *
-     * @param lookup
+     * Builds a new TableScan node from sources that will benefit from a join pushdown
+     * For any other sources, do not push down the join
      * @param connectorId
      * @param nodesToCombine
-     * @param overallPredicates
+     * @param filterEqualityInference
      * @return
      */
-    private PlanNode getNewTableScanNode(Lookup lookup,
-            ConnectorId connectorId,
+    private List<PlanNode> getNewTableScanNode(ConnectorId connectorId,
             List<PlanNode> nodesToCombine,
-            List<RowExpression> overallPredicates)
+            EqualityInference filterEqualityInference)
     {
-        List<RowExpression> tableScanPredicates = new ArrayList<>();
 
         // Build combined output variables
         Set<VariableReferenceExpression> combinedOutputVariables = nodesToCombine.stream()
                 .flatMap(o -> o.getOutputVariables().stream())
                 .collect(Collectors.toSet());
 
-        // We similarly need to resolve and build
-        // (i) Overall list of table names
-        // (ii) Any intermediate projections that must be on the TableScanNode to produce the combinedOutputVariables
-        // (iii) If there are any extra filters that are encountered while matching the individual plan nodes to TableScanNodes, these should be tracked too
+        ImmutableList.Builder<PlanNode> joinPushdownSources = ImmutableList.builder();
+        ImmutableList.Builder<PlanNode> finalResultSources = ImmutableList.builder();
 
-        // Next, we need to 'move' any overall predicates that refers to `combinedOutputVariables` to tableScanPredicates
-        Iterator<RowExpression> iterator = overallPredicates.iterator();
-        while (iterator.hasNext()) {
-            RowExpression predicate = iterator.next();
-            Set<VariableReferenceExpression> predicateReferencedVariables = extractVariableExpressions(predicate);
-            if (Sets.difference(predicateReferencedVariables, combinedOutputVariables).isEmpty()) {
-                // The predicate can be 'pushed' into our new TableScanNode
-                tableScanPredicates.add(predicate);
-                // This predicate can be removed from the overall predicates
-                overallPredicates.remove(predicate);
+        RowExpression equiJoinFiltersForSources = LogicalRowExpressions.and(
+                filterEqualityInference.generateEqualitiesPartitionedBy(combinedOutputVariables::contains)
+                        .getScopeEqualities());
+
+        // We need to remove any sources that do not have any equi-join filters at all
+        Set<VariableReferenceExpression> referredVariables = extractVariableExpressions(equiJoinFiltersForSources);
+        nodesToCombine.forEach(node-> {
+            if (node.getOutputVariables().stream().anyMatch(referredVariables::contains)) {
+                // At least one of the output variables of this node was involved in an equi join with another source
+                // So there is a valid JOIN with one of the other sources
+                joinPushdownSources.add(node);
             }
-        }
+            else {
+                finalResultSources.add(node);
+            }
+        });
 
         // At this point we should have
-        // 1. All the table references that belong to the same connector that need to be combined
-        // 2. All the predicates that refer to these tables
-        // 3. A list of overall output variables
+        // 1. All the table references that belong to the same connector AND can have a JOIN pushed down - these need to be combined to a TableScanNode
+        // 2. All the equi-join predicates that refer to these tables
         // We can now build our new TableScanNode which represents the join pushed down
-        LOG.info("For Connector [%s], we could build a new TableScanNode with%n" +
+        List<PlanNode> joinedSources = joinPushdownSources.build();
+        LOG.info("For Connector [%s], we could build a new TableScanNode with sources : %s %n" +
                         "Output variables : [%s]%n" +
-                        "Predicates : [%s]",
-                connectorId.toString(),
+                        "Equi join Predicates : [%s]",
+                connectorId,
+                joinedSources,
                 combinedOutputVariables,
-                tableScanPredicates);
+                equiJoinFiltersForSources);
 
         // Returning a FAKE ValuesNode for now
-        return new ValuesNode(Optional.empty(), new PlanNodeId(connectorId.toString()), Collections.emptyList(),
-                Collections.emptyList(), Optional.empty());
+        PlanNode fakeTableScanNode = new ValuesNode(Optional.empty(),
+                new PlanNodeId(connectorId.toString()),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Optional.empty());
+
+        // Add the new combined-table-scan node
+        finalResultSources.add(fakeTableScanNode);
+        return finalResultSources.build();
     }
 
     /**
