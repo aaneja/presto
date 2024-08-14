@@ -16,6 +16,7 @@ import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.VariablesExtractor;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.Map;
@@ -44,17 +45,52 @@ public class JdbcToSqlTranslatorTest
                 "'");
     }
 
+    @DataProvider
+    public static Object[][] expressions()
+    {
+        return new Object[][] {
+                {"col1 = col2", true},
+                {"col1 = col2 + col3", true},
+                {"col1 = floor(col2)", false}, // Does not translate because floor is not supported in Jdbc translation
+                {"col1 = col2 AND col3 = col4", true},
+                {"col1 = 10", true}
+        };
+    }
+
+    /**
+     * This test checks if the equality predicates are translated correctly.
+     * This will be used in the JdbcJoinByConnector optimizer to check if the inferred equalities can be translated to SQL
+     *
+     * @param equiJoinClause
+     * @param willTranslate
+     */
+    @Test(dataProvider = "expressions")
+    public void testTranslationOfEqualityPredicates(String equiJoinClause, boolean willTranslate)
+    {
+        TypeProvider typeProvider = buildTypeProvider(4);
+
+        RowExpression predicate = sqlToRowExpressionTranslator.translate(expression(equiJoinClause), typeProvider);
+        Map<VariableReferenceExpression, ColumnHandle> assignmentsMap = buildFakeAssignmentsForAllVariables(predicate);
+
+        TranslatedExpression<JdbcExpression> translatedExpression = translateWith(
+                predicate,
+                jdbcFilterToSqlTranslator,
+                assignmentsMap);
+
+        assertEquals(willTranslate, translatedExpression.getTranslated().isPresent());
+    }
+
     @Test
     public void testTranslationOfAndExpression()
     {
         String untranslated = "col1 = col2 AND col3 = col4";
         TypeProvider typeProvider = buildTypeProvider(4);
 
-        RowExpression specialForm = sqlToRowExpressionTranslator.translate(expression(untranslated), typeProvider);
-        Map<VariableReferenceExpression, ColumnHandle> assignmentsMap = buildFakeAssignmentsForAllVariables(specialForm);
+        RowExpression predicate = sqlToRowExpressionTranslator.translate(expression(untranslated), typeProvider);
+        Map<VariableReferenceExpression, ColumnHandle> assignmentsMap = buildFakeAssignmentsForAllVariables(predicate);
 
         TranslatedExpression<JdbcExpression> translatedExpression = translateWith(
-                specialForm,
+                predicate,
                 jdbcFilterToSqlTranslator,
                 assignmentsMap);
 
