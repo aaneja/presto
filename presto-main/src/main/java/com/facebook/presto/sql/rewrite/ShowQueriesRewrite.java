@@ -29,6 +29,7 @@ import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.analyzer.MetadataResolver;
 import com.facebook.presto.spi.analyzer.ViewDefinition;
+import com.facebook.presto.spi.constraints.ForeignKeyConstraint;
 import com.facebook.presto.spi.constraints.NotNullConstraint;
 import com.facebook.presto.spi.constraints.PrimaryKeyConstraint;
 import com.facebook.presto.spi.constraints.UniqueConstraint;
@@ -51,6 +52,7 @@ import com.facebook.presto.sql.tree.AstVisitor;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.ColumnDefinition;
 import com.facebook.presto.sql.tree.ConstraintSpecification;
+import com.facebook.presto.sql.tree.ConstraintSpecification.ForeignKeyReferenceKey;
 import com.facebook.presto.sql.tree.CreateFunction;
 import com.facebook.presto.sql.tree.CreateMaterializedView;
 import com.facebook.presto.sql.tree.CreateTable;
@@ -145,6 +147,7 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.VIEW_PARSE_ERROR;
 import static com.facebook.presto.sql.tree.BooleanLiteral.FALSE_LITERAL;
 import static com.facebook.presto.sql.tree.BooleanLiteral.TRUE_LITERAL;
+import static com.facebook.presto.sql.tree.ConstraintSpecification.ConstraintType.FOREIGN_KEY;
 import static com.facebook.presto.sql.tree.ConstraintSpecification.ConstraintType.PRIMARY_KEY;
 import static com.facebook.presto.sql.tree.ConstraintSpecification.ConstraintType.UNIQUE;
 import static com.facebook.presto.sql.tree.LogicalBinaryExpression.and;
@@ -564,6 +567,18 @@ final class ShowQueriesRewrite
                                         constraint.isEnabled(),
                                         constraint.isRely(),
                                         constraint.isEnforced()));
+                            }
+                            else if (constraint instanceof ForeignKeyConstraint) {
+                                ForeignKeyConstraint<String> foreignKeyConstraint = (ForeignKeyConstraint<String>) constraint;
+                                return Optional.of(new ConstraintSpecification(foreignKeyConstraint.getName(),
+                                        foreignKeyConstraint.getSourceColumnNames(),
+                                        FOREIGN_KEY,
+                                        foreignKeyConstraint.isEnabled(),
+                                        foreignKeyConstraint.isRely(),
+                                        foreignKeyConstraint.isEnforced(),
+                                        Optional.of(new ForeignKeyReferenceKey(
+                                                createQualifiedName(foreignKeyConstraint.getReferencedTableName()),
+                                                foreignKeyConstraint.getReferencedColumnNames()))));
                             }
                             return Optional.empty();
                         })

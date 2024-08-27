@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.metastore.api.CheckLockRequest;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.ForeignKeysResponse;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
 import org.apache.hadoop.hive.metastore.api.LockRequest;
@@ -43,6 +44,7 @@ import org.apache.hadoop.hive.metastore.api.PrincipalType;
 import org.apache.hadoop.hive.metastore.api.PrivilegeBag;
 import org.apache.hadoop.hive.metastore.api.Role;
 import org.apache.hadoop.hive.metastore.api.RolePrincipalGrant;
+import org.apache.hadoop.hive.metastore.api.SQLForeignKey;
 import org.apache.hadoop.hive.metastore.api.SQLNotNullConstraint;
 import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
 import org.apache.hadoop.hive.metastore.api.SQLUniqueConstraint;
@@ -75,6 +77,7 @@ public class MockHiveMetastoreClient
     public static final List<SQLPrimaryKey> TEST_PRIMARY_KEY = ImmutableList.of(new SQLPrimaryKey(TEST_DATABASE, TEST_TABLE_WITH_CONSTRAINTS, "c1", 0, "pk", true, false, true));
     public static final List<SQLUniqueConstraint> TEST_UNIQUE_CONSTRAINT = ImmutableList.of(new SQLUniqueConstraint("", TEST_DATABASE, TEST_TABLE_WITH_CONSTRAINTS, "c2", 1, "uk", true, false, true));
     public static final List<SQLNotNullConstraint> TEST_NOT_NULL_CONSTRAINT = ImmutableList.of(new SQLNotNullConstraint("", TEST_DATABASE, TEST_TABLE_WITH_CONSTRAINTS, "c3", "nn", true, true, true));
+    public static final List<SQLForeignKey> TEST_FOREIGN_KEY_CONSTRAINT = ImmutableList.of();
     public static final String TEST_TOKEN = "token";
     public static final MetastoreContext TEST_METASTORE_CONTEXT = new MetastoreContext("test_user", "test_queryId", Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.empty(), false, HiveColumnConverterProvider.DEFAULT_COLUMN_CONVERTER_PROVIDER, WarningCollector.NOOP, new RuntimeStats());
     public static final String TEST_PARTITION1 = "key=testpartition1";
@@ -338,7 +341,7 @@ public class MockHiveMetastoreClient
     }
 
     @Override
-    public void createTableWithConstraints(Table table, List<SQLPrimaryKey> primaryKeys, List<SQLUniqueConstraint> uniqueConstraints, List<SQLNotNullConstraint> notNullConstraints)
+    public void createTableWithConstraints(Table table, List<SQLPrimaryKey> primaryKeys, List<SQLForeignKey> foreignKeys, List<SQLUniqueConstraint> uniqueConstraints, List<SQLNotNullConstraint> notNullConstraints)
     {
         throw new UnsupportedOperationException();
     }
@@ -506,6 +509,17 @@ public class MockHiveMetastoreClient
     }
 
     @Override
+    public Optional<ForeignKeysResponse> getForeignKeyConstraints(String catName, String dbName, String tableName)
+            throws TException
+    {
+        accessCount.incrementAndGet();
+        if (!dbName.equals(TEST_DATABASE) || !tableName.equals(TEST_TABLE_WITH_CONSTRAINTS)) {
+            throw new UnsupportedOperationException();
+        }
+        return Optional.of(new ForeignKeysResponse(TEST_FOREIGN_KEY_CONSTRAINT));
+    }
+
+    @Override
     public void dropConstraint(String dbName, String tableName, String constraintName)
             throws TException
     {
@@ -528,6 +542,13 @@ public class MockHiveMetastoreClient
 
     @Override
     public void addNotNullConstraint(List<SQLNotNullConstraint> constraint)
+            throws TException
+    {
+        // No-op
+    }
+
+    @Override
+    public void addForeignKeyConstraint(List<SQLForeignKey> constraint)
             throws TException
     {
         // No-op
