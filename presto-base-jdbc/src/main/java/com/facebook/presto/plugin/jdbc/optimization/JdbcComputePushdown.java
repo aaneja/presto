@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.plugin.jdbc.optimization;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.expressions.LogicalRowExpressions;
 import com.facebook.presto.expressions.translator.TranslatedExpression;
 import com.facebook.presto.plugin.jdbc.JdbcTableHandle;
@@ -44,6 +45,7 @@ import static java.util.Objects.requireNonNull;
 public class JdbcComputePushdown
         implements ConnectorPlanOptimizer
 {
+    public static final Logger LOG = Logger.get(JdbcComputePushdown.class);
     private final ExpressionOptimizer expressionOptimizer;
     private final JdbcFilterToSqlTranslator jdbcFilterToSqlTranslator;
     private final LogicalRowExpressions logicalRowExpressions;
@@ -114,7 +116,10 @@ public class JdbcComputePushdown
                     oldTableScanNode.getAssignments());
 
             // TODO if jdbcExpression is not present, walk through translated subtree to find out which parts can be pushed down
-            if (!oldTableHandle.getLayout().isPresent() || !jdbcExpression.getTranslated().isPresent()) {
+            Optional<JdbcExpression> possibleAdditionalPredicates = jdbcExpression.getTranslated();
+            LOG.info("For the filter predicate %s, the translated SQL/JdbcExpression is %s", predicate, possibleAdditionalPredicates.map(JdbcExpression::getExpression).orElse("[empty]"));
+
+            if (!oldTableHandle.getLayout().isPresent() || !possibleAdditionalPredicates.isPresent()) {
                 return node;
             }
 
@@ -123,7 +128,7 @@ public class JdbcComputePushdown
                     session.getSqlFunctionProperties(),
                     oldConnectorTable,
                     oldTableLayoutHandle.getTupleDomain(),
-                    jdbcExpression.getTranslated());
+                    possibleAdditionalPredicates);
 
             TableHandle tableHandle = new TableHandle(
                     oldTableHandle.getConnectorId(),
