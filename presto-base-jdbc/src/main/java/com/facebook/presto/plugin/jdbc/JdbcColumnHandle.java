@@ -34,6 +34,7 @@ public final class JdbcColumnHandle
     private final Type columnType;
     private final boolean nullable;
     private final Optional<String> comment;
+    private final Optional<String> fullyQualifiedColumnName; //Useful in predicate pushdown SQL to disambiguate any column references during Join pushdown
 
     @JsonCreator
     public JdbcColumnHandle(
@@ -42,7 +43,8 @@ public final class JdbcColumnHandle
             @JsonProperty("jdbcTypeHandle") JdbcTypeHandle jdbcTypeHandle,
             @JsonProperty("columnType") Type columnType,
             @JsonProperty("nullable") boolean nullable,
-            @JsonProperty("comment") Optional<String> comment)
+            @JsonProperty("comment") Optional<String> comment,
+            Optional<String> fullyQualifiedColumnName)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.columnName = requireNonNull(columnName, "columnName is null");
@@ -50,6 +52,12 @@ public final class JdbcColumnHandle
         this.columnType = requireNonNull(columnType, "columnType is null");
         this.nullable = nullable;
         this.comment = requireNonNull(comment, "comment is null");
+        this.fullyQualifiedColumnName = fullyQualifiedColumnName;
+    }
+
+    public Optional<String> getFullyQualifiedColumnName()
+    {
+        return fullyQualifiedColumnName;
     }
 
     @JsonProperty

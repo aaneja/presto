@@ -229,7 +229,8 @@ public class QueryBuilder
             if (isAcceptedType(type)) {
                 Domain domain = tupleDomain.getDomains().get().get(column);
                 if (domain != null) {
-                    builder.add(toPredicate(column.getColumnName(), domain, type, accumulator));
+                    String columnName = column.getFullyQualifiedColumnName().orElse(column.getColumnName());
+                    builder.add(toPredicate(columnName, domain, type, accumulator));
                 }
             }
         }

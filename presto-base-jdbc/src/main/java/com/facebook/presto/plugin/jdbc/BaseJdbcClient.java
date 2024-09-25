@@ -247,7 +247,8 @@ public class BaseJdbcClient
                         String columnName = resultSet.getString("COLUMN_NAME");
                         boolean nullable = columnNullable == resultSet.getInt("NULLABLE");
                         Optional<String> comment = Optional.ofNullable(emptyToNull(resultSet.getString("REMARKS")));
-                        columns.add(new JdbcColumnHandle(connectorId, columnName, typeHandle, columnMapping.get().getType(), nullable, comment));
+                        Optional<String> fullyQualifiedColumnName = Optional.of(format("%s.%s.%s", tableHandle.getSchemaName(), tableHandle.getTableName(), columnName));
+                        columns.add(new JdbcColumnHandle(connectorId, columnName, typeHandle, columnMapping.get().getType(), nullable, comment, fullyQualifiedColumnName));
                     }
                 }
                 if (columns.isEmpty()) {
