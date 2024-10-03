@@ -24,6 +24,7 @@ import com.facebook.presto.hive.HiveHdfsConfiguration;
 import com.facebook.presto.hive.MetastoreClientConfig;
 import com.facebook.presto.hive.NamenodeStats;
 import com.facebook.presto.hive.PartitionNameWithVersion;
+import com.facebook.presto.hive.TestingExtendedHiveMetastore;
 import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
 import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
 import com.facebook.presto.hive.metastore.HivePartitionMutator;
@@ -130,7 +131,7 @@ public class TestQuickStatsProvider
     private final HiveClientConfig hiveClientConfig = new HiveClientConfig().setRecursiveDirWalkerEnabled(true);
     private HdfsEnvironment hdfsEnvironment;
     private DirectoryLister directoryListerMock;
-    private SemiTransactionalHiveMetastore metastoreMock;
+    private ExtendedHiveMetastore metastoreMock;
     private MetastoreContext metastoreContext;
     private PartitionQuickStats mockPartitionQuickStats;
     private PartitionStatistics expectedPartitionStats;
@@ -190,7 +191,7 @@ public class TestQuickStatsProvider
                 Optional.empty(),
                 Optional.empty());
 
-        metastoreMock = MockSemiTransactionalHiveMetastore.create(mockTable, mockPartition);
+        metastoreMock = new TestingExtendedHiveMetastore();
 
         directoryListerMock = (fileSystem, table2, path, partition, namenodeStats, hiveDirectoryContext) -> emptyIterator();
 
@@ -210,12 +211,12 @@ public class TestQuickStatsProvider
     {
         QuickStatsBuilder quickStatsBuilderMock = (session, metastore, table, metastoreContext, partitionId, files) -> mockPartitionQuickStats;
 
-        QuickStatsProvider quickStatsProvider = new QuickStatsProvider(hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
+        QuickStatsProvider quickStatsProvider = new QuickStatsProvider(metastoreMock, hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
                 ImmutableList.of(quickStatsBuilderMock));
 
         // Execute
         ImmutableList<String> testPartitions1 = ImmutableList.of("partition1", "partition2", "partition3");
-        Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(SESSION, metastoreMock,
+        Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(SESSION,
                 new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions1);
 
         // Verify only one call was made for each test partition
@@ -224,14 +225,14 @@ public class TestQuickStatsProvider
         quickStats.values().forEach(ps -> assertEquals(ps, expectedPartitionStats));
 
         // For subsequent calls for the same partitions that are already cached, no new calls are mode to the quick stats builder
-        quickStatsProvider.getQuickStats(SESSION, metastoreMock,
+        quickStatsProvider.getQuickStats(SESSION,
                 new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions1);
 
         // For subsequent calls with a mix of old and new partitions, we only see calls to the quick stats builder for the new partitions
         ImmutableList<String> testPartitions2 = ImmutableList.of("partition4", "partition5", "partition6");
         ImmutableList<String> testPartitionsMix = ImmutableList.<String>builder().addAll(testPartitions1).addAll(testPartitions2).build();
 
-        quickStats = quickStatsProvider.getQuickStats(SESSION, metastoreMock,
+        quickStats = quickStatsProvider.getQuickStats(SESSION,
                 new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitionsMix);
         assertEquals(quickStats.entrySet().size(), testPartitionsMix.size());
         assertTrue(quickStats.keySet().containsAll(testPartitionsMix));
@@ -254,7 +255,7 @@ public class TestQuickStatsProvider
             return mockPartitionQuickStats;
         };
 
-        QuickStatsProvider quickStatsProvider = new QuickStatsProvider(hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
+        QuickStatsProvider quickStatsProvider = new QuickStatsProvider(metastoreMock, hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
                 ImmutableList.of(longRunningQuickStatsBuilderMock));
 
         List<String> testPartitions = ImmutableList.of("partition1", "partition2", "partition3");
@@ -265,10 +266,10 @@ public class TestQuickStatsProvider
 
             ConnectorSession session = getSession("600ms", "0ms");
             // Execute two concurrent calls for the same partitions; wait for them to complete
-            CompletableFuture<Map<String, PartitionStatistics>> future1 = supplyAsync(() -> quickStatsProvider.getQuickStats(session, metastoreMock,
+            CompletableFuture<Map<String, PartitionStatistics>> future1 = supplyAsync(() -> quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions), commonPool());
 
-            CompletableFuture<Map<String, PartitionStatistics>> future2 = supplyAsync(() -> quickStatsProvider.getQuickStats(session, metastoreMock,
+            CompletableFuture<Map<String, PartitionStatistics>> future2 = supplyAsync(() -> quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions), commonPool());
 
             allOf(future1, future2).join();
@@ -300,7 +301,7 @@ public class TestQuickStatsProvider
             }
 
             // Future calls for the same partitions will return from cached partition stats with valid values
-            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session, metastoreMock,
+            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions);
 
             // Verify only one call was made for each test partition
@@ -315,10 +316,10 @@ public class TestQuickStatsProvider
 
             ConnectorSession session = getSession("300ms", "300ms");
             // Execute two concurrent calls for the same partitions; wait for them to complete
-            CompletableFuture<Map<String, PartitionStatistics>> future1 = supplyAsync(() -> quickStatsProvider.getQuickStats(session, metastoreMock,
+            CompletableFuture<Map<String, PartitionStatistics>> future1 = supplyAsync(() -> quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions), commonPool());
 
-            CompletableFuture<Map<String, PartitionStatistics>> future2 = supplyAsync(() -> quickStatsProvider.getQuickStats(session, metastoreMock,
+            CompletableFuture<Map<String, PartitionStatistics>> future2 = supplyAsync(() -> quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions), commonPool());
 
             allOf(future1, future2).join();
@@ -350,12 +351,12 @@ public class TestQuickStatsProvider
         };
 
         {
-            QuickStatsProvider quickStatsProvider = new QuickStatsProvider(hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
+            QuickStatsProvider quickStatsProvider = new QuickStatsProvider(metastoreMock, hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
                     ImmutableList.of(longRunningQuickStatsBuilderMock));
             // Create a session where an inline build will occur for any newly requested partition
             ConnectorSession session = getSession("300ms", "0ms");
             List<String> testPartitions = ImmutableList.copyOf(mockPerPartitionStatsFetchTimes.keySet());
-            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session, metastoreMock,
+            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, testPartitions);
             Map<String, Instant> inProgressBuildsSnapshot = quickStatsProvider.getInProgressBuildsSnapshot();
 
@@ -376,10 +377,10 @@ public class TestQuickStatsProvider
             // Create a session where no inline builds will occur for any requested partition; empty() quick stats will be returned
             ConnectorSession session = getSession("0ms", "0ms");
 
-            QuickStatsProvider quickStatsProvider = new QuickStatsProvider(hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
+            QuickStatsProvider quickStatsProvider = new QuickStatsProvider(metastoreMock, hdfsEnvironment, directoryListerMock, hiveClientConfig, new NamenodeStats(),
                     ImmutableList.of((session1, metastore, table, metastoreContext, partitionId, files) -> mockPartitionQuickStats));
 
-            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session, metastoreMock,
+            Map<String, PartitionStatistics> quickStats = quickStatsProvider.getQuickStats(session,
                     new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, ImmutableList.of("p5", "p6"));
 
             assertEquals(quickStats.size(), 2);
@@ -392,7 +393,7 @@ public class TestQuickStatsProvider
                     .maxAttempts(10)
                     .exponentialBackoff(new Duration(20D, MILLISECONDS), new Duration(500D, MILLISECONDS), new Duration(2, SECONDS), 2.0)
                     .run("waitForQuickStatsBuild", () -> {
-                        Map<String, PartitionStatistics> quickStatsAfter = quickStatsProvider.getQuickStats(session, metastoreMock,
+                        Map<String, PartitionStatistics> quickStatsAfter = quickStatsProvider.getQuickStats(session,
                                 new SchemaTableName(TEST_SCHEMA, TEST_TABLE), metastoreContext, ImmutableList.of("p5", "p6"));
 
                         try {
