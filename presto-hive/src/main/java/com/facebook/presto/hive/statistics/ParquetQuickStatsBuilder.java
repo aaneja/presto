@@ -71,6 +71,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeoutException;
 
@@ -286,6 +287,7 @@ public class ParquetQuickStatsBuilder
     public PartitionQuickStats buildQuickStats(ConnectorSession session, ExtendedHiveMetastore metastore,
             SchemaTableName table, MetastoreContext metastoreContext, String partitionId, Iterator<HiveFileInfo> files)
     {
+        log.info("Started build of parquet quickstats for partitionId %s", partitionId);
         requireNonNull(session);
         requireNonNull(metastore);
         requireNonNull(table);
@@ -384,7 +386,27 @@ public class ParquetQuickStatsBuilder
         if (rolledUpColStats.isEmpty()) {
             return PartitionQuickStats.EMPTY;
         }
+
+        // double temp = doBusyWork(30);
+        log.info("Ended build of parquet quickstats for partitionId [%s]", partitionId);
         return new PartitionQuickStats(partitionId, rolledUpColStats.values(), filesCount);
+    }
+
+    private static double doBusyWork(int finalCounter)
+    {
+        double currentMax = ThreadLocalRandom.current().nextDouble();
+        for (long i = 0; i < finalCounter * 1_000_000_000L; i++) {
+            // Do some math work to keep the thread busy
+            double x = Math.pow(i, 2);
+            currentMax = Math.max(currentMax, x);
+        }
+        try {
+            Thread.sleep(10000);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        return currentMax;
     }
 
     enum ColumnType

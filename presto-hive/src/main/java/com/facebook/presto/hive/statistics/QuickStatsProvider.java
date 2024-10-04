@@ -35,6 +35,7 @@ import com.facebook.presto.hive.metastore.PartitionStatistics;
 import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.SchemaTableName;
+import com.google.common.base.Joiner;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -127,6 +128,12 @@ public class QuickStatsProvider
     }
 
     @Managed
+    public void clearCache()
+    {
+        partitionToStatsCache.invalidateAll();
+    }
+
+    @Managed
     public long getRequestCount()
     {
         return requestCount.get();
@@ -164,25 +171,33 @@ public class QuickStatsProvider
             return partitionIds.stream().collect(toMap(k -> k, v -> empty()));
         }
 
+        log.info("Building quick stats for partition ids : %s", Joiner.on(",").join(partitionIds));
+
         CompletableFuture<PartitionStatistics>[] partitionQuickStatCompletableFutures = new CompletableFuture[partitionIds.size()];
         for (int counter = 0; counter < partitionIds.size(); counter++) {
             String partitionId = partitionIds.get(counter);
             partitionQuickStatCompletableFutures[counter] = supplyAsync(() -> getQuickStats(session, table, metastoreContext, partitionId), backgroundFetchExecutor);
         }
 
+        Stopwatch sw = Stopwatch.createStarted();
         try {
             // Wait for all the partitions to get their quick stats
             // If this query is reading a partition for which we do not already have cached quick stats,
             // we will block the execution of the query until the stats are fetched for all such partitions,
             // or we time out waiting for the fetch
             allOf(partitionQuickStatCompletableFutures).get(getQuickStatsInlineBuildTimeoutMillis(session), MILLISECONDS);
+            log.info("Built quick stats for partition ids : %s", Joiner.on(",").join(partitionIds));
         }
         catch (InterruptedException | ExecutionException e) {
             log.error(e);
             throw new RuntimeException(e);
         }
         catch (TimeoutException e) {
-            log.warn(e, "Timeout while building quick stats");
+            session.getRuntimeStats().addMetricValue("QuickStatsProvider/OverallQuickStatsBuildTimeout", RuntimeUnit.NONE, 1L);
+            log.warn(e, "Timeout while building quick stats after %d ms", sw.elapsed(MILLISECONDS));
+        }
+        finally {
+            sw.stop();
         }
 
         ImmutableMap.Builder<String, PartitionStatistics> result = ImmutableMap.builder();
@@ -235,6 +250,7 @@ public class QuickStatsProvider
             }
             else {
                 // We don't want to wait for quick stats for this query
+                log.info("Already building quick stats for partition %s, returning empty()", partitionId);
                 return empty();
             }
         }
