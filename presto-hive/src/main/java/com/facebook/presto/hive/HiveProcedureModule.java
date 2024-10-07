@@ -31,5 +31,6 @@ public class HiveProcedureModule
         procedures.addBinding().toProvider(CreateEmptyPartitionProcedure.class).in(Scopes.SINGLETON);
         procedures.addBinding().toProvider(SyncPartitionMetadataProcedure.class).in(Scopes.SINGLETON);
         procedures.addBinding().toProvider(DirectoryListCacheInvalidationProcedure.class).in(Scopes.SINGLETON);
+        procedures.addBinding().toProvider(QuickStatsInvalidateCacheProcedure.class).in(Scopes.SINGLETON);
     }
 }
