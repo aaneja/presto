@@ -49,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.MapEntry.entry;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -76,6 +77,19 @@ public class TestJdbcMetadata
             throws Exception
     {
         database.close();
+    }
+
+    @Test
+    public void testCacheTurnedOn()
+    {
+        ListeningExecutorService executor = listeningDecorator(newCachedThreadPool(daemonThreadsNamed("test-%s")));
+        JdbcMetadataCache jdbcMetadataCache2 = new JdbcMetadataCache(executor, database.getJdbcClient(), new JdbcMetadataCacheStats(),
+                OptionalLong.of(1000), OptionalLong.of(1000), // Cache turned ON
+                100);
+        metadata = new JdbcMetadata(jdbcMetadataCache2, database.getJdbcClient(), false);
+        JdbcTableHandle tableHandle1 = metadata.getTableHandle(SESSION, new SchemaTableName("example", "numbers"));
+        JdbcTableHandle tableHandle2 = metadata.getTableHandle(SESSION, new SchemaTableName("example", "numbers"));
+        assertSame(tableHandle1, tableHandle2);
     }
 
     @Test
