@@ -18,6 +18,8 @@ import com.facebook.presto.Session;
 import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.expressions.DefaultRowExpressionTraversalVisitor;
 import com.facebook.presto.expressions.LogicalRowExpressions;
+import com.facebook.presto.matching.Captures;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.spi.ColumnHandle;
@@ -26,8 +28,6 @@ import com.facebook.presto.spi.ConnectorTableHandle;
 import com.facebook.presto.spi.JoinTableInfo;
 import com.facebook.presto.spi.JoinTableSet;
 import com.facebook.presto.spi.TableHandle;
-import com.facebook.presto.spi.VariableAllocator;
-import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.JoinNode;
@@ -41,7 +41,9 @@ import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.planner.EqualityInference;
 import com.facebook.presto.sql.planner.NullabilityAnalyzer;
-import com.facebook.presto.sql.planner.TypeProvider;
+import com.facebook.presto.sql.planner.iterative.GroupReference;
+import com.facebook.presto.sql.planner.iterative.Lookup;
+import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.AssignmentUtils;
 import com.facebook.presto.sql.planner.plan.MultiJoinNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
@@ -64,6 +66,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static com.facebook.presto.SystemSessionProperties.INEQUALITY_JOIN_PUSHDOWN_ENABLED;
@@ -80,6 +83,7 @@ import static com.facebook.presto.spi.connector.ConnectorCapabilities.SUPPORTS_J
 import static com.facebook.presto.spi.plan.JoinType.INNER;
 import static com.facebook.presto.sql.planner.VariablesExtractor.extractUnique;
 import static com.facebook.presto.sql.planner.optimizations.JoinNodeUtils.toRowExpression;
+import static com.facebook.presto.sql.planner.plan.Patterns.join;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
@@ -114,7 +118,7 @@ import static java.util.Objects.requireNonNull;
  *          `-- TableHandle3
  */
 public class GroupInnerJoinsByConnector
-        implements PlanOptimizer
+        implements Rule<JoinNode>
 {
     private static final Logger logger = Logger.get(GroupInnerJoinsByConnector.class);
     private final FunctionResolution functionResolution;
@@ -129,26 +133,40 @@ public class GroupInnerJoinsByConnector
         this.metadata = metadata;
     }
 
-    @Override
-    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
-    {
-        if (isEnabled(session)) {
-            PlanNode rewrittenPlan = SimplePlanRewriter.rewriteWith(new Rewriter(functionResolution, determinismEvaluator, idAllocator, metadata, session), plan);
-            return PlanOptimizerResult.optimizerResult(rewrittenPlan, !rewrittenPlan.equals(plan));
-        }
-        return PlanOptimizerResult.optimizerResult(plan, false);
-    }
-
-    @Override
     public void setEnabledForTesting(boolean isSet)
     {
         isEnabledForTesting = isSet;
     }
 
     @Override
+    public Pattern<JoinNode> getPattern()
+    {
+        return join().matching(
+                joinNode -> joinNode.getType() == INNER
+                        && determinismEvaluator.isDeterministic(joinNode.getFilter().orElse(TRUE_CONSTANT)));
+    }
+
+    @Override
     public boolean isEnabled(Session session)
     {
         return isEnabledForTesting || isInnerJoinPushdownEnabled(session);
+    }
+
+    @Override
+    public Result apply(JoinNode node, Captures captures, Context context)
+    {
+        PlanNode rewrittenPlan = SimplePlanRewriter.rewriteWith(new Rewriter(functionResolution,
+                        determinismEvaluator,
+                        context.getIdAllocator(),
+                        metadata, context.getSession(), context.getLookup()),
+                node);
+
+        if (rewrittenPlan.equals(node)) {
+            return Result.empty();
+        }
+        else {
+            return Result.ofPlanNode(rewrittenPlan);
+        }
     }
 
     private static class Rewriter
@@ -162,8 +180,9 @@ public class GroupInnerJoinsByConnector
         private final LogicalRowExpressions logicalRowExpressions;
         private final Session session;
         private final FunctionAndTypeManager functionAndTypeManager;
+        private final Lookup lookup;
 
-        private Rewriter(FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator, PlanNodeIdAllocator idAllocator, Metadata metadata, Session session)
+        private Rewriter(FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator, PlanNodeIdAllocator idAllocator, Metadata metadata, Session session, Lookup lookup)
         {
             this.functionResolution = requireNonNull(functionResolution, "functionResolution is null");
             this.determinismEvaluator = requireNonNull(determinismEvaluator, "determinismEvaluator is null");
@@ -176,6 +195,7 @@ public class GroupInnerJoinsByConnector
                     functionAndTypeManager);
             this.nullabilityAnalyzer = new NullabilityAnalyzer(functionAndTypeManager);
             this.session = requireNonNull(session, "session is null");
+            this.lookup = requireNonNull(lookup, "lookup is null");
         }
 
         private static List<RowExpression> getExpressionsWithinVariableScope(Set<RowExpression> rowExpressions, Set<VariableReferenceExpression> variableScope)
@@ -232,7 +252,7 @@ public class GroupInnerJoinsByConnector
         @Override
         public PlanNode visitJoin(JoinNode node, RewriteContext<Void> context)
         {
-            return getCombinedJoin(node, functionResolution, determinismEvaluator, metadata, session);
+            return getCombinedJoin(node, functionResolution, determinismEvaluator, metadata, session, lookup);
         }
 
         /**
@@ -271,7 +291,7 @@ public class GroupInnerJoinsByConnector
                                                 oldJoinNode.getRightHashVariable(),
                                                 oldJoinNode.getDistributionType(),
                                                 oldJoinNode.getDynamicFilters());
-                PlanNode source = getCombinedJoin(newJoin, functionResolution, determinismEvaluator, metadata, session);
+                PlanNode source = getCombinedJoin(newJoin, functionResolution, determinismEvaluator, metadata, session, lookup);
                 if (!source.getId().equals(newJoin.getId())) {
                     return source;
                 }
@@ -279,7 +299,7 @@ public class GroupInnerJoinsByConnector
             return node;
         }
 
-        private PlanNode getCombinedJoin(JoinNode node, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator, Metadata metadata, Session session)
+        private PlanNode getCombinedJoin(JoinNode node, FunctionResolution functionResolution, DeterminismEvaluator determinismEvaluator, Metadata metadata, Session session, Lookup lookup)
         {
             if (node.getType() == INNER) {
                 MultiJoinNode groupInnerJoinsMultiJoinNode = new JoinNodeFlattener(node, functionResolution, determinismEvaluator).toMultiJoinNode();
@@ -352,7 +372,14 @@ public class GroupInnerJoinsByConnector
                     .build();
             Iterable<RowExpression> inequalityPredicates = isInEqualityPushDownEnabled ? filter(extractConjuncts(multiJoinNode.getJoinFilter().get()), isInequalityInferenceCandidate()) : ImmutableSet.of();
             AtomicReference<Boolean> wereSourcesRewritten = new AtomicReference<>(false);
-            for (PlanNode source : multiJoinNode.getSources()) {
+            Set<PlanNode> sources = multiJoinNode.getSources()
+                    .stream().flatMap(planNode -> {
+                        if (planNode instanceof GroupReference) {
+                            return lookup.resolveGroup(planNode);
+                        }
+                        return Stream.of(planNode);
+                    }).collect(Collectors.toSet());
+            for (PlanNode source : sources) {
                 Optional<String> connectorId = getConnectorIdFromSource(source, session);
                 if (connectorId.isPresent()) {
                     // This source can be combined with other 'sources' of the same connector to produce a single TableScanNode
