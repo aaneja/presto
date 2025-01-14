@@ -381,7 +381,7 @@ public class GroupInnerJoinsByConnector
                     return Stream.of(planNode);
                 }).collect(Collectors.toSet());
         for (PlanNode source : sources) {
-            Optional<String> connectorId = getConnectorIdFromSource(source, session);
+            Optional<String> connectorId = getConnectorIdFromSource(source, session, lookup);
             if (connectorId.isPresent()) {
                 // This source can be combined with other 'sources' of the same connector to produce a single TableScanNode
                 sourcesByConnector.computeIfAbsent(connectorId.get(), k -> new ArrayList<>());
@@ -583,17 +583,21 @@ public class GroupInnerJoinsByConnector
      *
      * @param resolved
      * @param session
+     * @param lookup
      * @return Optional<String>
      */
-    private Optional<String> getConnectorIdFromSource(PlanNode resolved, Session session)
+    private Optional<String> getConnectorIdFromSource(PlanNode resolved, Session session, Lookup lookup)
     {
+        if (resolved instanceof GroupReference) {
+            return getConnectorIdFromSource(lookup.resolve(resolved), session, lookup);
+        }
         if (resolved instanceof ProjectNode) {
-            return getConnectorIdFromSource(((ProjectNode) resolved).getSource(), session);
+            return getConnectorIdFromSource(((ProjectNode) resolved).getSource(), session, lookup);
         }
-        else if (resolved instanceof FilterNode) {
-            return getConnectorIdFromSource(((FilterNode) resolved).getSource(), session);
+        if (resolved instanceof FilterNode) {
+            return getConnectorIdFromSource(((FilterNode) resolved).getSource(), session, lookup);
         }
-        else if (resolved instanceof TableScanNode) {
+        if (resolved instanceof TableScanNode) {
             TableScanNode ts = (TableScanNode) resolved;
             ConnectorId connectorId = ts.getTable().getConnectorId();
             boolean supportsJoinPushDown = metadata.getConnectorCapabilities(session, connectorId).contains(SUPPORTS_JOIN_PUSHDOWN);
