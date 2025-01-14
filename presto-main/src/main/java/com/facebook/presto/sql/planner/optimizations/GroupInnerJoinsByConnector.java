@@ -79,6 +79,7 @@ import static com.facebook.presto.expressions.LogicalRowExpressions.and;
 import static com.facebook.presto.expressions.LogicalRowExpressions.extractConjuncts;
 import static com.facebook.presto.spi.connector.ConnectorCapabilities.SUPPORTS_JOIN_PUSHDOWN;
 import static com.facebook.presto.spi.plan.JoinType.INNER;
+import static com.facebook.presto.sql.planner.PlannerUtils.restrictOutput;
 import static com.facebook.presto.sql.planner.VariablesExtractor.extractUnique;
 import static com.facebook.presto.sql.planner.optimizations.JoinNodeUtils.toRowExpression;
 import static com.facebook.presto.sql.planner.plan.Patterns.join;
@@ -322,7 +323,8 @@ public class GroupInnerJoinsByConnector
     {
         PlanNode joinNode = createJoin(0, ImmutableList.copyOf(multiJoinNode.getSources()), idAllocator);
         RowExpression combinedFilters = and(multiJoinNode.getJoinFilter().get(), multiJoinNode.getFilter());
-        return new FilterNode(Optional.empty(), idAllocator.getNextId(), joinNode, combinedFilters);
+        FilterNode withFilters = new FilterNode(Optional.empty(), idAllocator.getNextId(), joinNode, combinedFilters);
+        return restrictOutput(withFilters, idAllocator, multiJoinNode.getOutputVariables());
     }
 
     private PlanNode createJoin(int index, List<PlanNode> sources, PlanNodeIdAllocator idAllocator)
