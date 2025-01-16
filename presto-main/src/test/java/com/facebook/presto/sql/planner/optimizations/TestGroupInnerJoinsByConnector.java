@@ -405,7 +405,7 @@ public class TestGroupInnerJoinsByConnector
 
     private PlanNode optimize(PlanNode plan, Session session, Map<ConnectorId, Set<ConnectorPlanOptimizer>> optimizers, Metadata metadata)
     {
-        GroupInnerJoinsByConnector optimizer = new GroupInnerJoinsByConnector(metadata);
+        GroupInnerJoinsByConnectorRuleSet.OnlyJoinRule optimizer = new GroupInnerJoinsByConnectorRuleSet.OnlyJoinRule(metadata);
 //        return optimizer.optimize(plan, session, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP).getPlanNode();
         return null; // TODO UPDATE TESTS AFTER CHANGING OPTIMZER TO ITERATIVE
     }
