@@ -14,6 +14,7 @@
 package com.facebook.presto.dispatcher;
 
 import com.facebook.airlift.concurrent.BoundedExecutor;
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.analyzer.PreparedQuery;
 import com.facebook.presto.common.resourceGroups.QueryType;
@@ -69,6 +70,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class DispatchManager
 {
+    public static final Logger LOG = Logger.get(DispatchManager.class);
     private final QueryIdGenerator queryIdGenerator;
     private final ResourceGroupManager<?> resourceGroupManager;
     private final WarningCollectorFactory warningCollectorFactory;
@@ -259,6 +261,14 @@ public class DispatchManager
      */
     private <C> void createQueryInternal(QueryId queryId, String slug, int retryCount, SessionContext sessionContext, String query, ResourceGroupManager<C> resourceGroupManager)
     {
+        try {
+            LOG.info("Beginning long sleep for testing");
+            Thread.sleep(60_000_000);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Session session = null;
         SessionBuilder sessionBuilder = null;
         PreparedQuery preparedQuery;
