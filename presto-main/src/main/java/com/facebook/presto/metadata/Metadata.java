@@ -519,6 +519,7 @@ public interface Metadata
     void dropConstraint(Session session, TableHandle tableHandle, Optional<String> constraintName, Optional<String> columnName);
 
     void addConstraint(Session session, TableHandle tableHandle, TableConstraint<String> tableConstraint);
+
     default boolean isPushdownSupportedForFilter(Session session, TableHandle tableHandle, RowExpression filter, Map<VariableReferenceExpression, ColumnHandle> symbolToColumnHandleMap)
     {
         return false;
