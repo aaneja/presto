@@ -136,8 +136,7 @@ public class GroupInnerJoinsByConnectorRuleSet
     }
 
     public static class OnlyJoinRule
-            extends BaseGroupInnerJoinsByConnector
-            implements Rule<JoinNode>
+            extends BaseGroupInnerJoinsByConnector<JoinNode>
     {
         public OnlyJoinRule(Metadata metadata)
         {
@@ -152,11 +151,6 @@ public class GroupInnerJoinsByConnectorRuleSet
                             && determinismEvaluator.isDeterministic(joinNode.getFilter().orElse(TRUE_CONSTANT)));
         }
 
-        @Override
-        public boolean isEnabled(Session session)
-        {
-            return isEnabledForTesting || isInnerJoinPushdownEnabled(session);
-        }
 
         @Override
         public Result apply(JoinNode node, Captures captures, Context context)
@@ -173,8 +167,7 @@ public class GroupInnerJoinsByConnectorRuleSet
     }
 
     public static class FilterOnJoinRule
-            extends BaseGroupInnerJoinsByConnector
-            implements Rule<FilterNode>
+            extends BaseGroupInnerJoinsByConnector<FilterNode>
     {
         private static final Capture<JoinNode> JOIN = newCapture();
 
@@ -189,12 +182,6 @@ public class GroupInnerJoinsByConnectorRuleSet
             return Patterns.filter().with(source().matching(join().matching(
                     joinNode -> joinNode.getType() == INNER
                             && determinismEvaluator.isDeterministic(joinNode.getFilter().orElse(TRUE_CONSTANT))).capturedAs(JOIN)));
-        }
-
-        @Override
-        public boolean isEnabled(Session session)
-        {
-            return isEnabledForTesting || isInnerJoinPushdownEnabled(session);
         }
 
         @Override
@@ -231,7 +218,8 @@ public class GroupInnerJoinsByConnectorRuleSet
         }
     }
 
-    public abstract static class BaseGroupInnerJoinsByConnector
+    public abstract static class BaseGroupInnerJoinsByConnector<T>
+            implements Rule<T>
     {
         final FunctionResolution functionResolution;
         final DeterminismEvaluator determinismEvaluator;
@@ -248,6 +236,12 @@ public class GroupInnerJoinsByConnectorRuleSet
             this.metadata = metadata;
             this.functionAndTypeManager = metadata.getFunctionAndTypeManager();
             this.nullabilityAnalyzer = new NullabilityAnalyzer(functionAndTypeManager);
+        }
+
+        @Override
+        public boolean isEnabled(Session session)
+        {
+            return isEnabledForTesting || isInnerJoinPushdownEnabled(session);
         }
 
         public void setEnabledForTesting(boolean isSet)
