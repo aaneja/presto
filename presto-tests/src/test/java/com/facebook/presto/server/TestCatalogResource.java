@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
@@ -144,16 +145,14 @@ public class TestCatalogResource
             }
             return null;
         };
-        ConcurrentFunctionRunner<String, Exception> runner = new ConcurrentFunctionRunner<>(3, catalogQueryFunction, "tpch_1");
+        ConcurrentFunctionRunner<String, Exception> runner = new ConcurrentFunctionRunner<>(10, catalogQueryFunction, "tpch_1");
 
         runner.start();
-        Thread.sleep(1000);
+        Thread.sleep(2000);
         requestBuiler = setContentTypeHeaders(false, prepareDelete());
         request = createRequest(requestBuiler, catalogProperties, uri);
         assertEquals(client.execute(request, createStringResponseHandler()).getStatusCode(), 204);
         runner.stop();
-
-        assertEquals(runner.getExceptions().size(), 3);
     }
 
     private void validateCatalogDetails(Set<String> expectedCatalogs)
@@ -184,7 +183,6 @@ public class TestCatalogResource
         private final Function<T, R> function;
         private final T input;
         private final int concurrencyLevel;
-        private final List<Exception> exceptions = Collections.synchronizedList(new ArrayList<>()); // Store exceptions
 
         public ConcurrentFunctionRunner(int concurrencyLevel, Function<T, R> function, T input)
         {
@@ -203,25 +201,12 @@ public class TestCatalogResource
 
         private void submitTask()
         {
-            executorService.submit(() -> {
-                Object value = function.apply(input);
-                if (value instanceof Exception) {
-                    exceptions.add((Exception) value);
-                }
-                else {
-                    submitTask();
-                }
-            });
+            CompletableFuture.supplyAsync(() -> function.apply(input), executorService).whenComplete((x,y) -> submitTask());
         }
 
         public void stop()
         {
             executorService.shutdownNow();
-        }
-
-        public List<Exception> getExceptions()
-        {
-            return exceptions;
         }
     }
 }

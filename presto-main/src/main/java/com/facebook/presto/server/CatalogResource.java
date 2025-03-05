@@ -235,7 +235,8 @@ public class CatalogResource
                     break;
                 case REMOVE:
                     connectorId = getCatalogConnectorId(catalogName);
-                    if (Objects.nonNull(connectorId)) {
+                    boolean isCatalogInUse = isCatalogInUse(connectorId);
+                    if (Objects.nonNull(connectorId) || !isCatalogInUse) {
                         catalogStore.dropConnection(catalogName);
                         connectorTypeSerdeManager.removeConnectorTypeSerdeProvider(connectorId);
                         updateConnectorIds(connectorId, true);
@@ -243,7 +244,7 @@ public class CatalogResource
                         status = NO_CONTENT;
                     }
                     else {
-                        log.info("Catalog ['%s'] Not found", catalogName);
+                        log.info("Catalog ['%s'] is in use or not found", catalogName);
                         status = NOT_FOUND;
                     }
                     break;
